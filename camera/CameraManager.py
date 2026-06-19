@@ -38,7 +38,8 @@ class CameraManager:
         if self.camera is not None and self.camera.IsOpen():
             if not self.camera.IsGrabbing():
                 self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
-            return
+            print("Camera acquisition already started.")
+            return "Camera acquisition is already acquiring."
 
         selected = self.basler_devices[index]
         self.active_device = selected
@@ -53,10 +54,12 @@ class CameraManager:
         self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
         print(f"Started acquisition: {selected['name']}")
+        return f"Started acquisition on camera: {selected['name']}"
 
     def stop_acquisition(self):
         if self.camera is not None and self.camera.IsGrabbing():
             self.camera.StopGrabbing()
+            self.acquiring = False
             print("Stopped acquisition.")
 
     def get_frame_bgr(self):
