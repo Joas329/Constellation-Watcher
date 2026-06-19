@@ -21,7 +21,12 @@ def start_camera():
     if CAMERA_MANAGER is None:
         return {"ok": False, "error": "Camera manager not initialized"}, 500
 
-    return {"ok": True, "message": "Camera already started"}
+    try:
+        acquiring = CAMERA_MANAGER.start_acquisition()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
+
+    return {"ok": True, "message": acquiring}
 
 
 @app.route("/api/camera/stream")
