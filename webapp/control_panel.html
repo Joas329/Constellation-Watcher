@@ -47,7 +47,7 @@
     <div class="row">
         <div class="col">
             <div class="p-3 mb-4 text-white" style="background:#343a40; border-radius:6px;">
-                <h2 class="m-0"><strong>MCOP Control Panel</strong></h2>
+                <h2 class="m-0"><strong>Constellation Watcher Control Panel</strong></h2>
                 <small>Autonomous Dual-Camera Payload – Local Ground UI</small>
             </div>
         </div>
@@ -224,11 +224,15 @@
                         <option value="ir">IR Camera</option>
                     </select>
 
-                    <button class="btn btn-secondary w-100 mb-3" onclick="refreshFrame()">
-                        Refresh Last Frame
+                    <button class="btn btn-success w-100 mb-2" onclick="startViewfinder()">
+                        Start Viewfinder
                     </button>
 
-                    <img id="lastFrameImg" src="" alt="No frame loaded yet">
+                    <button class="btn btn-danger w-100 mb-3" onclick="stopViewfinder()">
+                        Stop Viewfinder
+                    </button>
+
+                    <img id="lastFrameImg" src="" alt="Live camera stream">
 
                 </div>
             </div>
@@ -240,7 +244,8 @@
 </div> <!-- END CONTAINER -->
 
 <script>
-const BASE = "http://192.168.2.25:8080";
+
+const BASE = "";
 
 async function apiCall(endpoint) {
     try {
@@ -252,24 +257,19 @@ async function apiCall(endpoint) {
     }
 }
 
-async function refreshFrame() {
+async function startViewfinder() {
     const cam = document.getElementById("cameraSelector").value;
 
-    try {
-        const res = await fetch(`${BASE}/camera/${cam}/last_frame`);
+    await fetch("/api/camera/start", { method: "POST" });
 
-        if (!res.ok) {
-            alert("No frame available");
-            return;
-        }
+    document.getElementById("lastFrameImg").src =
+        `/api/camera/stream?camera_id=${encodeURIComponent(cam)}&t=${Date.now()}`;
+}
 
-        const blob = await res.blob();
-        document.getElementById("lastFrameImg").src =
-            URL.createObjectURL(blob);
+function stopViewfinder() {
+    document.getElementById("lastFrameImg").removeAttribute("src");
 
-    } catch (err) {
-        alert("Failed to fetch frame: " + err);
-    }
+    fetch("/api/system/stop_camera", { method: "POST" });
 }
 
 async function refreshSystemStatus() {
