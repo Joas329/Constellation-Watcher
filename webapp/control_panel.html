@@ -28,12 +28,12 @@
             width: 90px;
         }
         .left-panel {
-        flex: 0 0 40%;
-        max-width: 40%;
+        flex: 0 0 30%;
+        max-width: 30%;
         }
         .right-panel {
-            flex: 0 0 60%;
-            max-width: 60%;
+            flex: 0 0 70%;
+            max-width: 70%;
         }
 
     </style>
@@ -48,7 +48,7 @@
         <div class="col">
             <div class="p-3 mb-4 text-white" style="background:#343a40; border-radius:6px;">
                 <h2 class="m-0"><strong>Constellation Watcher Control Panel</strong></h2>
-                <small>Autonomous Dual-Camera Payload – Local Ground UI</small>
+                <small>Autonomous Camera Payload – Local Control Panel</small>
             </div>
         </div>
     </div>
@@ -61,39 +61,6 @@
                 <div class="card-header bg-success text-white">
                     <strong>System</strong>
                 </div>
-
-                <!-- CAMERA CONTROL -->
-                <div class="card-body shadow-sm mb-3">
-                    <div class="card-header bg-primary text-white">
-                        <strong>Camera Control</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center">
-
-                            <!-- Optical Camera -->
-                            <div class="col">
-                                <h5>Optical Camera</h5>
-                                <button class="btn btn-success btn-wide" onclick="apiCall('/camera/opt/on')">ON</button>
-                                <button class="btn btn-danger btn-wide" onclick="apiCall('/camera/opt/off')">OFF</button>
-                            </div>
-
-                            <!-- IR Camera -->
-                            <div class="col">
-                                <h5>IR Camera</h5>
-                                <button class="btn btn-success btn-wide" onclick="apiCall('/camera/ir/on')">ON</button>
-                                <button class="btn btn-danger btn-wide" onclick="apiCall('/camera/ir/off')">OFF</button>
-                            </div>
-
-                            <!-- Quick Checks -->
-                            <div class="col">
-                                <h5>Quick Checks</h5>
-                                <button class="btn btn-secondary btn-wide" onclick="apiCall('/communication/test')">Test API</button>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
           <!-- CAMERA CONFIGURATION -->
           <div class="card-body shadow-sm mb-3">
             <div class="card-header bg-secondary text-white">
@@ -158,7 +125,7 @@
                             </div>
                             <div class="card-body">
                                 <div>
-                                    Time Sync: <span class="badge bg-warning">UNKNOWN</span>
+                                    Time Sync: <span id="timeSync" class="badge bg-warning">UNKNOWN</span>
                                 </div>
 
                                 <div>
@@ -166,7 +133,7 @@
                                 </div>
 
                                 <div>
-                                    Drift: -- ms
+                                    Drift: <span id="driftMs">--</span> ms
                                 </div>
 
                                 <hr>
@@ -211,7 +178,7 @@
         <!-- RIGHT PANEL (Camera Preview) -->
         <div class="col d-flex flex-column right-panel">
 
-            <div class="card shadow-sm mb-3 w-100">
+            <div class="card shadow-sm mb-3 w-200">
                 <div class="card-header bg-primary text-white">
                     <strong>Frame Viewer</strong>
                 </div>
@@ -271,29 +238,92 @@ function stopViewfinder() {
 
     fetch("/api/system/stop_camera", { method: "POST" });
 }
-
 async function refreshSystemStatus() {
     try {
         const res = await fetch(`${BASE}/system/status`);
-        if (!res.ok) return;
+        if (!res.ok) {
+            console.error("System status request failed:", res.status);
+            return;
+        }
 
         const s = await res.json();
 
-        document.getElementById("utcNow").innerText = s.utc_now;
+        // UTC Time
+        if (s.utc_now) {
+            const utcDate = new Date(s.utc_now);
+
+            document.getElementById("utcNow").innerText =
+                utcDate.toLocaleString("en-CA", {
+                    timeZone: "UTC",
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                }) + " UTC";
+        }
+
+        // CPU Temperature
         document.getElementById("cpuTemp").innerText =
-            s.cpu_temp_c.toFixed(1) + " °C";
+            Number(s.cpu_temp_c).toFixed(1) + " °C";
+
+        // CPU Load
         document.getElementById("cpuLoad").innerText =
-            s.cpu_load_pct.toFixed(1) + " %";
+            Number(s.cpu_load_pct).toFixed(1) + " %";
+
+        // Disk Usage
         document.getElementById("disk").innerText =
-            `${s.disk_used_gb.toFixed(1)} / ${s.disk_total_gb.toFixed(1)} GB`;
-        document.getElementById("uptime").innerText =
-            Math.floor(s.uptime_s) + " s";
+            `${Number(s.disk_used_gb).toFixed(1)} / ${Number(s.disk_total_gb).toFixed(1)} GB`;
+
+        // Uptime
+        const uptimeSeconds = Math.floor(Number(s.uptime_s));
+
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        const seconds = uptimeSeconds % 60;
+
+        let uptimeText = "";
+
+        if (days > 0) uptimeText += `${days}d `;
+        if (hours > 0 || days > 0) uptimeText += `${hours}h `;
+        if (minutes > 0 || hours > 0 || days > 0) uptimeText += `${minutes}m `;
+        uptimeText += `${seconds}s`;
+
+        document.getElementById("uptime").innerText = uptimeText;
+
+        // Time Sync Status
+        const timeSyncElem = document.getElementById("timeSync");
+
+        if (timeSyncElem) {
+            const syncStatus = s.time_sync || "UNKNOWN";
+
+            timeSyncElem.innerText = syncStatus;
+
+            timeSyncElem.className =
+                syncStatus === "SYNCED"
+                    ? "badge bg-success"
+                    : syncStatus === "UNSYNCED"
+                    ? "badge bg-danger"
+                    : "badge bg-warning";
+        }
+
+        // Clock Drift
+        const driftElem = document.getElementById("driftMs");
+
+        if (driftElem) {
+            driftElem.innerText =
+                s.drift_ms !== undefined &&
+                s.drift_ms !== null
+                    ? Number(s.drift_ms).toFixed(1)
+                    : "--";
+        }
 
     } catch (err) {
-        console.error("System status fetch failed", err);
+        console.error("System status fetch failed:", err);
     }
 }
-
 async function setExposureOptical() {
   const ms = parseFloat(document.getElementById("exposureMs").value);
   if (!Number.isFinite(ms) || ms <= 0) {
