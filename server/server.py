@@ -41,7 +41,10 @@ def camera_stream():
 
     def generate():
         while True:
-            frame = CAMERA_MANAGER.get_frame_bgr()
+            frame = CAMERA_MANAGER.get_latest_frame()
+
+            if frame is None:
+                continue
 
             ok, jpg = cv2.imencode(".jpg", frame)
             if not ok:
