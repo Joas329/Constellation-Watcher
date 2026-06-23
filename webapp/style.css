@@ -1,0 +1,135 @@
+:root {
+    --bg-main:      #080808;
+    --bg-panel:     #141010;
+    --bg-card:      #1F1717;
+
+    --border:       #462424;
+
+    --header:       #2D1616;
+
+    --text:         #F0EEEE;
+}
+
+body {
+    background: var(--bg-main);
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    color: var(--text);
+}
+
+img#lastFrameImg {
+    width: 100%;
+    height: auto;
+    max-height: 75vh;
+    object-fit: contain;
+
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 5px;
+}
+
+.btn-wide {
+    width: 90px;
+}
+
+.left-panel {
+    flex: 0 0 400px;
+
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 15px;
+    margin-right: 10px;
+}
+
+.right-panel {
+    flex: 1;
+
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 15px;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.card-body {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
+.card-header {
+    border-bottom: 1px solid var(--border);
+}
+
+.form-control {
+    background: #1B0A0A;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.form-control:focus {
+    background: #1B0A0A;
+    color: var(--text);
+    border-color: var(--danger);
+    box-shadow: none;
+}
+
+.form-control::placeholder {
+    color: #8A6E6E;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+hr {
+    border-color: var(--border);
+}
+
+/* Bootstrap overrides */
+
+.bg-success {
+    background-color: var(--success) !important;
+}
+
+.bg-danger {
+    background-color: var(--danger) !important;
+}
+
+.bg-primary {
+    background-color: var(--info) !important;
+}
+
+.bg-secondary {
+    background-color: #5A3A3A !important;
+}
+
+.bg-dark {
+    background-color: #241111 !important;
+}
+
+.btn-primary {
+    background-color: var(--info);
+    border-color: var(--info);
+}
+
+.btn-success {
+    background-color: var(--success);
+    border-color: var(--success);
+}
+
+.btn-danger {
+    background-color: var(--danger);
+    border-color: var(--danger);
+}
+
+.btn-warning {
+    background-color: var(--warning);
+    border-color: var(--warning);
+    color: #e3ce0f;
+}

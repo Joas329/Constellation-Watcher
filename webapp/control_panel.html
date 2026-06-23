@@ -2,42 +2,11 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Constellation Panel Control Panel</title>
+    <title>Constellation Watcher Control Panel</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 
-    <style>
-        body {
-            background: #f7f7f7;
-            font-family: Arial, sans-serif;
-            padding: 20px;
-        }
-        img#lastFrameImg {
-            width: 100%;
-            height: auto;
-
-            /* Allow big frames */
-            max-height: 75vh;
-            object-fit: contain;
-
-            background: #fff;
-            border: 1px solid #ccc;
-            padding: 5px;
-        }
-        .btn-wide {
-            width: 90px;
-        }
-        .left-panel {
-        flex: 0 0 30%;
-        max-width: 30%;
-        }
-        .right-panel {
-            flex: 0 0 70%;
-            max-width: 70%;
-        }
-
-    </style>
-
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
@@ -46,7 +15,7 @@
 
     <div class="row">
         <div class="col">
-            <div class="p-3 mb-4 text-white" style="background:#343a40; border-radius:6px;">
+            <div class="p-3 mb-4 text-white" style="background: var(--header); border-radius:6px;">
                 <h2 class="m-0"><strong>Constellation Watcher Control Panel</strong></h2>
                 <small>Autonomous Camera Payload – Local Control Panel</small>
             </div>
@@ -58,13 +27,13 @@
         <div class="col d-flex flex-column left-panel">
 
             <div class="card shadow-sm mb-3">
-                <div class="card-header bg-success text-white">
+                <div class="card-header bg-secondary text-white">
                     <strong>System</strong>
                 </div>
           <!-- CAMERA CONFIGURATION -->
           <div class="card-body shadow-sm mb-3">
             <div class="card-header bg-secondary text-white">
-              <strong>Camera Configuration (Optical – Per-setting routes)</strong>
+              <strong>Camera Configuration</strong>
             </div>
 
             <div class="card-body">
@@ -72,39 +41,15 @@
               <label for="exposureMs">Exposure (ms)</label>
               <div class="input-group mb-3">
                 <input id="exposureMs" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
-                <button class="btn btn-primary" onclick="setExposureOptical()">Set Exposure</button>
+                <button class="btn btn-primary" onclick="setExposureOptical()">Set</button>
               </div>
-
-              <!-- Gain (placeholder route button for future) -->
-              <!-- <label for="gainVal">Gain</label>
-              <div class="input-group mb-3">
-                <input id="gainVal" class="form-control" placeholder="(future)">
-                <button class="btn btn-outline-secondary" onclick="apiCall('/camera/opt/gain')">Set Gain</button>
-              </div> -->
 
               <!-- FPS (placeholder route button for future) -->
               <label for="fpsVal">Frame Rate (fps)</label>
               <div class="input-group mb-3">
                 <input id="fpsVal" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
-                <button class="btn btn-primary" onclick="setFrameRateOptical()">Set FPS</button>
+                <button class="btn btn-primary" onclick="setFrameRateOptical()">Set</button>
               </div>
-
-              <!-- ROI (placeholder route button for future) -->
-              <!-- <label for="roiVal">ROI (x,y,w,h)</label>
-              <div class="input-group mb-3">
-                <input id="roiVal" class="form-control" placeholder="0,0,1920,1080">
-                <button class="btn btn-outline-secondary" onclick="apiCall('/camera/opt/roi')">Set ROI</button>
-              </div> -->
-
-              <!-- Trigger Mode (placeholder route button for future) -->
-              <!-- <label for="triggerMode">Trigger Mode</label>
-              <div class="input-group mb-3">
-                <select id="triggerMode" class="form-control">
-                  <option value="software">Software</option>
-                  <option value="hardware">Hardware</option>
-                </select>
-                <button class="btn btn-outline-secondary" onclick="apiCall('/camera/opt/trigger')">Set Trigger</button>
-              </div> -->
 
               <small class="text-muted">
                 Only <b>Set Exposure</b> and <b>Set Frame Rate</b> aare wired to the real route right now. The others are placeholders.
@@ -114,7 +59,7 @@
 
                 <!-- HOUSEKEEPING -->
                 <div class="card-body shadow-sm mb-3">
-                    <div class="card-header bg-success text-white">
+                    <div class="card-header bg-secondary text-white">
                         <strong>Housekeeping Telemetry</strong>
                     </div>
 
@@ -162,7 +107,7 @@
 
                 <!-- EMERGENCY -->
                 <div class="card-body shadow-sm mb-3">
-                    <div class="card-header bg-danger text-white">
+                    <div class="card-header bg-secondary text-white">
                         <strong>Emergency / System Control</strong>
                     </div>
                     <div class="card-body">
@@ -173,24 +118,15 @@
             </div>
         </div>
 
-
-
         <!-- RIGHT PANEL (Camera Preview) -->
         <div class="col d-flex flex-column right-panel">
 
-            <div class="card shadow-sm mb-3 w-200">
-                <div class="card-header bg-primary text-white">
+            <div class="card shadow-sm mb-3 w-150">
+                <div class="card-header bg-secondary text-white">
                     <strong>Frame Viewer</strong>
                 </div>
 
                 <div class="card-body">
-
-                    <label><b>Select Camera</b></label>
-                    <select id="cameraSelector" class="form-control mb-3">
-                        <option value="optical">Optical Camera</option>
-                        <option value="ir">IR Camera</option>
-                    </select>
-
                     <button class="btn btn-success w-100 mb-2" onclick="startViewfinder()">
                         Start Viewfinder
                     </button>
@@ -203,12 +139,9 @@
 
                 </div>
             </div>
-
         </div>
-
-    </div> <!-- END LEFT/RIGHT ROW -->
-
-</div> <!-- END CONTAINER -->
+    </div>
+</div>
 
 <script>
 
@@ -225,12 +158,10 @@ async function apiCall(endpoint) {
 }
 
 async function startViewfinder() {
-    const cam = document.getElementById("cameraSelector").value;
-
     await fetch("/api/camera/start", { method: "POST" });
 
     document.getElementById("lastFrameImg").src =
-        `/api/camera/stream?camera_id=${encodeURIComponent(cam)}&t=${Date.now()}`;
+        `/api/camera/stream?t=${Date.now()}`;
 }
 
 function stopViewfinder() {
