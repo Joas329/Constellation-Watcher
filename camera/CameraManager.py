@@ -18,7 +18,8 @@ class CameraManager:
         self.frame_lock = threading.Lock()
 
         self.acquisition_thread = None
-        self.running = False
+        self._stop_event = threading.Event()
+        self._state_lock = threading.Lock()
 
         if not self.basler_devices:
             print("No Basler cameras detected.")
@@ -40,39 +41,55 @@ class CameraManager:
         return devices
 
     def start_acquisition(self, index: int = 0):
-        with self.frame_lock:
-            self.last_frame = None
+        with self._state_lock:
+            if self.acquisition_thread is not None and self.acquisition_thread.is_alive():
+                return "Camera acquisition is already acquiring."
 
-        if not self.basler_devices:
-            raise RuntimeError("No Basler cameras detected.")
+            with self.frame_lock:
+                self.last_frame = None
 
-        if self.running:
-            return "Camera acquisition is already acquiring."
+            if not self.basler_devices:
+                raise RuntimeError("No Basler cameras detected.")
 
-        selected = self.basler_devices[index]
-        self.active_device = selected
+            selected = self.basler_devices[index]
+            self.active_device = selected
 
-        self.camera = pylon.InstantCamera(self.tl_factory.CreateDevice(selected["device_info"]))
+            self.camera = pylon.InstantCamera(
+                self.tl_factory.CreateDevice(selected["device_info"])
+            )
 
-        self.camera.Open()
+            self.camera.Open()
 
-        self.converter = pylon.ImageFormatConverter()
-        self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
-        self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+            self.converter = pylon.ImageFormatConverter()
+            self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+            self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
-        self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
-        self.running = True
-        self.acquisition_thread = threading.Thread(target=self._acquisition_loop, daemon=True)
-        self.acquisition_thread.start()
+            self._stop_event.clear()
+
+            self.acquisition_thread = threading.Thread(
+                target=self._acquisition_loop,
+                daemon=False
+            )
+            self.acquisition_thread.start()
 
         print(f"Started acquisition: {selected['name']}")
         return f"Started acquisition on camera: {selected['name']}"
 
     def _acquisition_loop(self):
-        while self.running:
+        while not self._stop_event.is_set():
+            grab = None
+
             try:
-                grab = self.camera.RetrieveResult(1500, pylon.TimeoutHandling_ThrowException)
+                if self.camera is None or not self.camera.IsGrabbing():
+                    self._stop_event.wait(0.05)
+                    continue
+
+                grab = self.camera.RetrieveResult(1500, pylon.TimeoutHandling_Return)
+
+                if grab is None:
+                    continue
 
                 try:
                     if not grab.GrabSucceeded():
@@ -88,8 +105,10 @@ class CameraManager:
                     grab.Release()
 
             except Exception as e:
-                if self.running:
+                if not self._stop_event.is_set():
                     print(f"Acquisition loop error: {e}")
+
+        print("Acquisition thread exited.")
 
     def get_latest_frame(self):
         with self.frame_lock:
@@ -99,19 +118,24 @@ class CameraManager:
             return self.last_frame.copy()
 
     def stop_acquisition(self):
-        if not self.running and self.acquisition_thread is None:
-            return
+        with self._state_lock:
+            if self.acquisition_thread is None:
+                return "Camera acquisition already stopped."
 
-        self.running = False
+            self._stop_event.set()
 
-        if self.acquisition_thread is not None:
-            self.acquisition_thread.join(timeout=2.0)
+            if self.camera is not None and self.camera.IsGrabbing():
+                self.camera.StopGrabbing()
+
+            thread = self.acquisition_thread
+
+        thread.join(timeout=5.0)
+
+        with self._state_lock:
             self.acquisition_thread = None
 
-        if self.camera is not None and self.camera.IsGrabbing():
-            self.camera.StopGrabbing()
-
         print("Stopped acquisition.")
+        return "Stopped acquisition."
 
     def close(self):
         self.stop_acquisition()
