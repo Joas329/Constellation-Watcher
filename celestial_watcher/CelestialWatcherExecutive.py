@@ -17,6 +17,7 @@ class CelestialWatcherExecutive:
         self._lock = threading.Lock()
         self.batch_number = 0
         self.frames_to_process = []
+        self.latest_solve_frame = None
 
     def start(self):
         with self._lock:
@@ -46,6 +47,10 @@ class CelestialWatcherExecutive:
 
         print("Celestial Watcher stopped.")
         return "Celestial Watcher stopped."
+
+    def get_latest_solve_frame(self):
+        with self._lock:
+            return self.latest_solve_frame
 
     def _publish_batch(self, frames):
         interval = 1.0 / PUBLISH_FPS
@@ -90,5 +95,8 @@ class CelestialWatcherExecutive:
             self._publish_batch(threshold_batch)
 
             self.frames_to_process = []
+
+            with self._lock:
+                self.latest_solve_frame = (self.batch_number, threshold_batch[0])
 
         print("Celestial Watcher thread stopped.")
