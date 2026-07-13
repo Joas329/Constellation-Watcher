@@ -1,8 +1,13 @@
-import cv2
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import threading
 import time
+
+import cv2
+
+FILENAME_TIMESTAMP_RE = re.compile(r"(\d{8})_(\d{6})")
 
 class FakeCameraManager:
     def __init__(self, image_directory: str, fps: float = 20.0, loop: bool = True, grayscale: bool = False):
@@ -41,6 +46,18 @@ class FakeCameraManager:
 
         print(f"FakeCameraManager found {len(self._frame_paths)} PNG frames.")
 
+    @staticmethod
+    def _parse_capture_time(frame_path: Path):
+        match = FILENAME_TIMESTAMP_RE.search(frame_path.name)
+        if match is None:
+            return None
+        date_str, time_str = match.groups()
+        try:
+            naive = datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
+        except ValueError:
+            return None
+        return naive.replace(tzinfo=timezone.utc)
+
     def start_acquisition(self) -> None:
         with self._lock:
             self._running = True
@@ -54,6 +71,13 @@ class FakeCameraManager:
             self._running = False
 
     def get_latest_frame(self):
+        result = self.get_latest_frame_with_time()
+        if result is None:
+            return None
+        frame, _ = result
+        return frame
+
+    def get_latest_frame_with_time(self):
         with self._lock:
             if not self._running:
                 return None
@@ -82,4 +106,4 @@ class FakeCameraManager:
             print(f"Could not read frame: {frame_path}")
             return None
 
-        return frame
+        return frame, self._parse_capture_time(frame_path)
