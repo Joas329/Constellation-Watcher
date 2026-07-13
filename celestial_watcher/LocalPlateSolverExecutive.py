@@ -60,11 +60,13 @@ class LocalPlateSolverExecutive:
 
     def _run_solver_logic(self):
         while not self._stop_event.is_set():
-            frame = self.camera_manager.get_latest_frame()
+            result = self.camera_manager.get_latest_frame_with_time()
 
-            if frame is None:
+            if result is None:
                 self._stop_event.wait(POLL_INTERVAL_S)
                 continue
+
+            frame, capture_time = result
 
             if self._stop_event.is_set():
                 break
@@ -75,7 +77,7 @@ class LocalPlateSolverExecutive:
                 print("Frame did not solve.")
             else:
                 with self._lock:
-                    self.latest_wcs = (time.time(), wcs)
+                    self.latest_wcs = (capture_time, wcs)
                 print(f"Solved. Center RA/Dec = "
                       f"{wcs.wcs.crval[0]:.4f}, {wcs.wcs.crval[1]:.4f}")
 
