@@ -5,6 +5,7 @@ import threading
 from server.server import run_server
 from camera.CameraManager import CameraManager
 from camera.FakeCameraManager import FakeCameraManager
+from celestial_watcher.RSOTracker import RSOTracker
 from celestial_watcher.CelestialWatcherExecutive import CelestialWatcherExecutive
 from celestial_watcher.LocalPlateSolverExecutive import LocalPlateSolverExecutive
 
@@ -26,6 +27,7 @@ def main():
     # camera_manager = CameraManager()
     celestial_watcher = CelestialWatcherExecutive(camera_manager)
     plate_solver = LocalPlateSolverExecutive(camera_manager)
+    rso_tracker = RSOTracker(plate_solver)
 
     try:
         # Start Celestial
@@ -33,6 +35,9 @@ def main():
 
         # Start Plate Solver
         plate_solver.start()
+
+        # Start RSO Tracker
+        rso_tracker.start()
 
         # Start the server
         run_server(camera_manager, celestial_watcher)
@@ -43,6 +48,7 @@ def main():
     finally:
         print("Cleaning up...")
         plate_solver.stop()
+        rso_tracker.stop()
         celestial_watcher.stop()
         camera_manager.close()
         print("Shutdown complete.")
