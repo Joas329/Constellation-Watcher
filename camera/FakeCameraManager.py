@@ -49,11 +49,8 @@ class FakeCameraManager:
 
         print("Fake camera stream started.")
 
-    def stop(self) -> None:
-        with self._lock:
-            self._running = False
-
-        print("Fake camera stream stopped.")
+    def close(self):
+        self.stop()
 
     def get_latest_frame(self):
         with self._lock:
