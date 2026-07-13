@@ -4,9 +4,12 @@ import threading
 
 from server.server import run_server
 from camera.CameraManager import CameraManager
+from camera.FakeCameraManager import FakeCameraManager
 from celestial_watcher.CelestialWatcherExecutive import CelestialWatcherExecutive
 
 shutdown_event = threading.Event()
+
+IMAGE_DIRECTORY = ("/media/joas329/My Passport/celestial_data_chunk")
 
 def handle_shutdown(signum, frame):
     print(f"\nShutdown signal received: {signum}")
@@ -17,7 +20,9 @@ def main():
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    camera_manager = CameraManager()
+    camera_manager = FakeCameraManager(IMAGE_DIRECTORY, 20.0, True, False)
+
+    # camera_manager = CameraManager()
     celestial_watcher = CelestialWatcherExecutive(camera_manager)
 
     try:
@@ -25,7 +30,7 @@ def main():
         celestial_watcher.start()
 
         # Start the server
-        run_server(camera_manager)
+        run_server(camera_manager, celestial_watcher)
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received.")
