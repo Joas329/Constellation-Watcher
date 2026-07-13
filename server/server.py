@@ -1,13 +1,14 @@
 import time
 import shutil
+import psutil
 import datetime
 import threading
-import psutil
+import numpy as np
 
 from pathlib import Path
 from waitress import serve
-from turbojpeg import TurboJPEG
 from flask import Flask, Response, send_from_directory
+from turbojpeg import TurboJPEG, TJPF_GRAY, TJSAMP_GRAY
 
 # *********************************************** #
 # JPEG encoder selection
@@ -15,6 +16,8 @@ from flask import Flask, Response, send_from_directory
 _turbo = TurboJPEG()
 
 def encode_jpeg(frame, quality):
+    if frame.ndim == 2:
+        return _turbo.encode(np.ascontiguousarray(frame), quality=quality, pixel_format=TJPF_GRAY, jpeg_subsample=TJSAMP_GRAY,)
     return _turbo.encode(frame, quality=quality)
 
 ENCODER = "turbojpeg"
@@ -172,6 +175,9 @@ def run_server(camera_manager, celestial_watcher, host="0.0.0.0", port=5000):
     CELESTIAL_WATCHER = celestial_watcher
 
     print(f"[stream_server] JPEG encoder: {ENCODER}")
+    print(f"[stream_server] JPEG encoder: {ENCODER}")
+    print(f"[stream_server] Website: http://127.0.0.1:{port}")
+    print(f"[stream_server] Listening on: http://{host}:{port}")
 
     # Each live MJPEG stream pins one thread. 8 covers two streams
     # per client x a couple of clients, plus API calls.
