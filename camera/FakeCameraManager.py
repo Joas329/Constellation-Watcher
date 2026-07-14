@@ -70,34 +70,25 @@ class FakeCameraManager:
         with self._lock:
             self._running = False
 
-    def get_latest_frame(self):
-        result = self.get_latest_frame_with_time()
-        if result is None:
-            return None
-        frame, _ = result
-        return frame
+    def start_acquisition(self) -> None:
+        with self._lock:
+            self._running = True
+            self._start_time = time.monotonic()
+        print("Fake camera stream started.")
 
     def get_latest_frame_with_time(self):
         with self._lock:
             if not self._running:
                 return None
-
-            current_time = time.monotonic()
-
-            if current_time - self._last_frame_time < self._frame_delay:
+            elapsed = time.monotonic() - self._start_time
+            index = int(elapsed * self.fps)
+            if self.loop:
+                index %= len(self._frame_paths)
+            elif index >= len(self._frame_paths):
+                self._running = False
                 return None
-
-            if self._current_index >= len(self._frame_paths):
-                if self.loop:
-                    self._current_index = 0
-                else:
-                    self._running = False
-                    return None
-
-            frame_path = self._frame_paths[self._current_index]
-            self._current_index += 1
-            self._last_frame_time = current_time
-
+            frame_path = self._frame_paths[index]
+        # imread + return as before
         read_mode = (cv2.IMREAD_GRAYSCALE if self.grayscale else cv2.IMREAD_COLOR)
 
         frame = cv2.imread(str(frame_path), read_mode)
