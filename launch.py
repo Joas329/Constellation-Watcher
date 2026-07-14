@@ -26,7 +26,7 @@ def main():
 
     # camera_manager = CameraManager()
     celestial_watcher = CelestialWatcherExecutive(camera_manager)
-    plate_solver = LocalPlateSolverExecutive(camera_manager)
+    plate_solver = LocalPlateSolverExecutive(celestial_watcher)
     rso_tracker = RSOTracker(plate_solver)
 
     try:
