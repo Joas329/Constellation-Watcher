@@ -40,7 +40,7 @@ def main():
         rso_tracker.start()
 
         # Start the server
-        run_server(camera_manager, celestial_watcher)
+        run_server(camera_manager, celestial_watcher, rso_tracker)
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received.")
