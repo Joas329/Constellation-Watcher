@@ -2,9 +2,11 @@ import os
 import threading
 
 import numpy as np
+from datetime import timedelta
 from skyfield.api import load, wgs84
 
 POLL_INTERVAL_S = 1.0
+VELOCITY_BASELINE_S = 1.0
 
 # Esrange Space Center, Kiruna: TODO: We need to get these from a gps tracker
 OBSERVER_LAT_DEG = 67.89
@@ -42,7 +44,7 @@ class RSOTracker:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._last_matched_time = None
-        self.latest_hits = None
+        self.latest_hits = None  # (capture_time, hits, frame, star_matches)
 
     def start(self):
         with self._lock:
@@ -96,14 +98,22 @@ class RSOTracker:
                 self._stop_event.wait(POLL_INTERVAL_S)
                 continue
 
+            # Grab the frame belonging to this WCS *before* the slow matching,
+            # to minimize the window in which the solver replaces it.
+            frame_for_hits = None
+            star_matches = []
+            solved = self.plate_solver.get_latest_solved_frame()
+            if solved is not None and solved[0] == capture_time:
+                _, frame_for_hits, star_matches = solved
+
             hits = self._satellites_in_frame(wcs, capture_time)
             self._last_matched_time = capture_time
 
             with self._lock:
-                self.latest_hits = (capture_time, hits)
+                self.latest_hits = (capture_time, hits, frame_for_hits, star_matches)
 
             if hits:
-                names = ", ".join(f"{name} ({x:.0f},{y:.0f})" for name, _, x, y in hits)
+                names = ", ".join(f"{name} ({x:.0f},{y:.0f})" for name, _, x, y, _, _ in hits)
                 print(f"RSOs in frame at {capture_time.isoformat()}: {names}")
             else:
                 print(f"No RSOs in frame at {capture_time.isoformat()}.")
@@ -112,6 +122,8 @@ class RSOTracker:
 
     def _satellites_in_frame(self, wcs, capture_time_utc):
         t = self._ts.from_datetime(capture_time_utc)
+        t_later = self._ts.from_datetime(
+            capture_time_utc + timedelta(seconds=VELOCITY_BASELINE_S))
         center_ra, center_dec = wcs.wcs.crval
 
         sin_dec_c = np.sin(np.radians(center_dec))
@@ -128,17 +140,31 @@ class RSOTracker:
             ra, dec, _ = topocentric.radec()
             ra_deg, dec_deg = ra._degrees, dec.degrees
 
-            cos_sep = (np.sin(np.radians(dec_deg)) * sin_dec_c + np.cos(np.radians(dec_deg)) * cos_dec_c * np.cos(np.radians(ra_deg - center_ra)))
+            cos_sep = (np.sin(np.radians(dec_deg)) * sin_dec_c
+                       + np.cos(np.radians(dec_deg)) * cos_dec_c
+                       * np.cos(np.radians(ra_deg - center_ra)))
             if np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0))) > FRAME_RADIUS_DEG:
                 continue
 
             x, y = wcs.world_to_pixel_values(ra_deg, dec_deg)
+            if not (np.isfinite(x) and np.isfinite(y)):
+                continue
             if not (0 <= x < FRAME_W and 0 <= y < FRAME_H):
                 continue
 
             if not sat.at(t).is_sunlit(self._eph):
                 continue
 
-            hits.append((sat.name, sat.model.satnum, float(x), float(y)))
+            # Pixel velocity from a short position baseline
+            topo_later = (sat - self._observer).at(t_later)
+            ra2, dec2, _ = topo_later.radec()
+            x2, y2 = wcs.world_to_pixel_values(ra2._degrees, dec2.degrees)
+            if np.isfinite(x2) and np.isfinite(y2):
+                vx = (float(x2) - float(x)) / VELOCITY_BASELINE_S
+                vy = (float(y2) - float(y)) / VELOCITY_BASELINE_S
+            else:
+                vx = vy = 0.0
+
+            hits.append((sat.name, sat.model.satnum, float(x), float(y), vx, vy))
 
         return hits
