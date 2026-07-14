@@ -187,8 +187,23 @@ def overlay():
         "frame_h": 3000,
         "rsos": [{"name": n, "norad": nid, "x": x, "y": y, "vx": vx, "vy": vy}
                  for n, nid, x, y, vx, vy in hits],
-        "stars": [{"x": fx, "y": fy} for fx, fy, _ix, _iy in star_matches],
+        "stars": [{"fx": fx, "fy": fy, "ix": ix, "iy": iy}
+                  for fx, fy, ix, iy in star_matches],
     }
+
+@app.route("/api/rso/solved_frame")
+def solved_frame():
+    if RSO_TRACKER is None:
+        return Response(status=204)
+    result = RSO_TRACKER.get_latest_hits()
+    if result is None:
+        return Response(status=204)
+    _, _, frame, _ = result
+    if frame is None:
+        return Response(status=204)
+    return Response(encode_jpeg(np.ascontiguousarray(frame), quality=70),
+                    mimetype="image/jpeg",
+                    headers={"Cache-Control": "no-cache"})
 
 def run_server(camera_manager, celestial_watcher, rso_tracker, host="0.0.0.0", port=5000):
     global CAMERA_MANAGER, CELESTIAL_WATCHER, RSO_TRACKER

@@ -28,6 +28,18 @@ img#lastFrameImg {
     padding: 5px;
 }
 
+#lastFrameImg,
+#processedFrameImg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 5px;
+    box-sizing: border-box;
+}
+
 .btn-wide {
     width: 90px;
 }

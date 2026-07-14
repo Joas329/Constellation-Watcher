@@ -7,12 +7,32 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 
     <link rel="stylesheet" href="/static/style.css">
+
+    <style>
+        .overlay-container {
+            position: relative;
+            display: block;
+            width: 100%;
+        }
+        .overlay-container img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .overlay-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
 </head>
 
 <body>
 
 <div class="container-fluid">
 
+    <!-- ROW 1: Header -->
     <div class="row">
         <div class="col">
             <div class="p-3 mb-4 text-white" style="background: var(--header); border-radius:6px;">
@@ -22,121 +42,138 @@
         </div>
     </div>
 
+    <!-- ROW 2: Controls (former left column, now full width) -->
     <div class="row">
-        <!-- LEFT PANEL (Your entire control UI) -->
-        <div class="col d-flex flex-column left-panel">
-
+        <div class="col">
             <div class="card shadow-sm mb-3">
                 <div class="card-header bg-secondary text-white">
                     <strong>System</strong>
                 </div>
-          <!-- CAMERA CONFIGURATION -->
-          <div class="card-body shadow-sm mb-3">
-            <div class="card-header bg-secondary text-white">
-              <strong>Camera Configuration</strong>
-            </div>
 
-            <div class="card-body">
-              <!-- Exposure -->
-              <label for="exposureMs">Exposure (ms)</label>
-              <div class="input-group mb-3">
-                <input id="exposureMs" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
-                <button class="btn btn-primary" onclick="setExposureOptical()">Set</button>
-              </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- CAMERA CONFIGURATION -->
+                        <div class="col-md-4">
+                            <div class="card shadow-sm mb-3 h-100">
+                                <div class="card-header bg-secondary text-white">
+                                    <strong>Camera Configuration</strong>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Exposure -->
+                                    <label for="exposureMs">Exposure (ms)</label>
+                                    <div class="input-group mb-3">
+                                        <input id="exposureMs" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
+                                        <button class="btn btn-primary" onclick="setExposureOptical()">Set</button>
+                                    </div>
 
-              <!-- FPS (placeholder route button for future) -->
-              <label for="fpsVal">Frame Rate (fps)</label>
-              <div class="input-group mb-3">
-                <input id="fpsVal" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
-                <button class="btn btn-primary" onclick="setFrameRateOptical()">Set</button>
-              </div>
+                                    <!-- FPS (placeholder route button for future) -->
+                                    <label for="fpsVal">Frame Rate (fps)</label>
+                                    <div class="input-group mb-3">
+                                        <input id="fpsVal" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
+                                        <button class="btn btn-primary" onclick="setFrameRateOptical()">Set</button>
+                                    </div>
 
-              <small class="text-muted">
-                Only <b>Set Exposure</b> and <b>Set Frame Rate</b> aare wired to the real route right now. The others are placeholders.
-              </small>
-            </div>
-          </div>
+                                    <button class="btn btn-success w-100 mb-2" onclick="startViewfinder()">
+                                        Start Viewfinder
+                                    </button>
 
-                <!-- HOUSEKEEPING -->
-                <div class="card-body shadow-sm mb-3">
-                    <div class="card-header bg-secondary text-white">
-                        <strong>Housekeeping Telemetry</strong>
-                    </div>
+                                    <button class="btn btn-danger w-100 mb-2" onclick="stopViewfinder()">
+                                        Stop Viewfinder
+                                    </button>
 
-                    <div class="card-body">
-                        <div class="card shadow-sm mb-3">
-                            <div class="card-header bg-dark text-white">
-                                <strong>System Status</strong>
+                                    <small class="text-muted">
+                                        Only <b>Set Exposure</b> and <b>Set Frame Rate</b> are wired to the real route right now. The others are placeholders.
+                                    </small>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div>
-                                    Time Sync: <span id="timeSync" class="badge bg-warning">UNKNOWN</span>
+                        </div>
+
+                        <!-- HOUSEKEEPING -->
+                        <div class="col-md-4">
+                            <div class="card shadow-sm mb-3 h-100">
+                                <div class="card-header bg-secondary text-white">
+                                    <strong>Housekeeping Telemetry</strong>
                                 </div>
+                                <div class="card-body">
+                                    <div>
+                                        Time Sync: <span id="timeSync" class="badge bg-warning">UNKNOWN</span>
+                                    </div>
 
-                                <div>
-                                    UTC Now: <span id="utcNow">--</span>
+                                    <div>
+                                        UTC Now: <span id="utcNow">--</span>
+                                    </div>
+
+                                    <div>
+                                        Drift: <span id="driftMs">--</span> ms
+                                    </div>
+
+                                    <hr>
+
+                                    <div>
+                                        CPU Temp: <span id="cpuTemp">-- °C</span>
+                                    </div>
+
+                                    <hr>
+
+                                    <div>
+                                        Disk: <span id="disk">-- / -- GB</span>
+                                    </div>
+
+                                    <div>
+                                        CPU Load: <span id="cpuLoad">-- %</span>
+                                    </div>
+
+                                    <div>
+                                        Uptime: <span id="uptime">-- s</span>
+                                    </div>
                                 </div>
+                            </div>
+                        </div>
 
-                                <div>
-                                    Drift: <span id="driftMs">--</span> ms
+                        <!-- EMERGENCY -->
+                        <div class="col-md-4">
+                            <div class="card shadow-sm mb-3 h-100">
+                                <div class="card-header bg-secondary text-white">
+                                    <strong>Emergency / System Control</strong>
                                 </div>
-
-                                <hr>
-
-                                <div>
-                                    CPU Temp: <span id="cpuTemp">-- °C</span>
-                                </div>
-
-                                <hr>
-
-                                <div>
-                                    Disk: <span id="disk">-- / -- GB</span>
-                                </div>
-
-                                <div>
-                                    CPU Load: <span id="cpuLoad">-- %</span>
-                                </div>
-
-                                <div>
-                                    Uptime: <span id="uptime">-- s</span>
+                                <div class="card-body">
+                                    <button class="btn btn-danger w-100 mb-2">STOP ALL</button>
+                                    <button class="btn btn-warning w-100">Safe Shutdown</button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- EMERGENCY -->
-                <div class="card-body shadow-sm mb-3">
-                    <div class="card-header bg-secondary text-white">
-                        <strong>Emergency / System Control</strong>
-                    </div>
-                    <div class="card-body">
-                        <button class="btn btn-danger">STOP ALL</button>
-                        <button class="btn btn-warning">Safe Shutdown</button>
-                    </div>
+    <!-- ROW 3: Processed stream (left) | Solved + RSO overlay (right) -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-secondary text-white">
+                    <strong>Processed Celestial Frame</strong>
+                </div>
+                <div class="card-body">
+                    <img id="processedFrameImg" src="" alt="Processed celestial frame" style="width: 100%;">
                 </div>
             </div>
         </div>
 
-        <!-- RIGHT PANEL (Camera Preview) -->
-        <div class="col d-flex flex-column right-panel">
-
-            <div class="card shadow-sm mb-3 w-150">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-3">
                 <div class="card-header bg-secondary text-white">
-                    <strong>Frame Viewer</strong>
+                    <strong>Plate Solved + RSO Overlay</strong>
                 </div>
-
                 <div class="card-body">
-                    <button class="btn btn-success w-100 mb-2" onclick="startViewfinder()">
-                        Start Viewfinder
-                    </button>
-
-                    <button class="btn btn-danger w-100 mb-3" onclick="stopViewfinder()">
-                        Stop Viewfinder
-                    </button>
-
-                    <img id="lastFrameImg" src="" alt="Live camera stream">
-
+                    <div class="overlay-container">
+                        <img id="solvedFrameImg" src="" alt="Solved frame stream">
+                        <canvas id="rsoOverlay"></canvas>
+                    </div>
+                    <small class="text-muted">
+                        RSO overlay solved at: <span id="overlayTime">--</span>
+                    </small>
                 </div>
             </div>
         </div>
@@ -146,6 +183,9 @@
 <script>
 
 const BASE = "";
+const TRAJECTORY_SPAN_S = 5.0;  // trajectory line spans +/- this many seconds of motion
+
+let overlayTimer = null;
 
 async function apiCall(endpoint) {
     try {
@@ -160,15 +200,127 @@ async function apiCall(endpoint) {
 async function startViewfinder() {
     await fetch("/api/camera/start", { method: "POST" });
 
-    document.getElementById("lastFrameImg").src =
-        `/api/camera/stream?t=${Date.now()}`;
+    document.getElementById("processedFrameImg").src =
+        `/api/celestial/processed_frame?t=${Date.now()}`;
+
+    document.getElementById("solvedFrameImg").src =
+        `/api/celestial/processed_frame?t=${Date.now()}`;
+
+    if (overlayTimer === null) {
+        overlayTimer = setInterval(drawOverlay, 1000);
+    }
 }
 
 function stopViewfinder() {
-    document.getElementById("lastFrameImg").removeAttribute("src");
+    document.getElementById("processedFrameImg").removeAttribute("src");
+    document.getElementById("solvedFrameImg").removeAttribute("src");
+
+    if (overlayTimer !== null) {
+        clearInterval(overlayTimer);
+        overlayTimer = null;
+    }
+    clearOverlay();
 
     fetch("/api/system/stop_camera", { method: "POST" });
 }
+
+function clearOverlay() {
+    const canvas = document.getElementById("rsoOverlay");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById("overlayTime").innerText = "--";
+}
+
+async function drawOverlay() {
+    const img = document.getElementById("solvedFrameImg");
+    const canvas = document.getElementById("rsoOverlay");
+
+    let data;
+    try {
+        const res = await fetch(`${BASE}/api/rso/overlay`);
+        if (!res.ok) return;
+        data = await res.json();
+    } catch (err) {
+        console.error("Overlay fetch failed:", err);
+        return;
+    }
+
+    if (!data.capture_time) {
+        document.getElementById("overlayTime").innerText = "no solve yet";
+        return;
+    }
+
+    img.onload = () => {
+        canvas.width = img.clientWidth;
+        canvas.height = img.clientHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        document.getElementById("overlayTime").innerText = data.capture_time;
+
+        const sx = canvas.width / data.frame_w;
+        const sy = canvas.height / data.frame_h;
+
+        // Matched stars: residual line, circle on detection, cross on catalog
+        for (const st of data.stars || []) {
+            const fx = st.fx * sx, fy = st.fy * sy;
+            const ix = st.ix * sx, iy = st.iy * sy;
+
+            ctx.strokeStyle = "#b4b4b4";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(fx, fy);
+            ctx.lineTo(ix, iy);
+            ctx.stroke();
+
+            ctx.strokeStyle = "#00ffff";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(fx, fy, 6, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+
+        // RSOs: trajectory arrow, then circle + name on top
+        for (const s of data.rsos) {
+            const x = s.x * sx;
+            const y = s.y * sy;
+            const dx = (s.vx || 0) * sx * TRAJECTORY_SPAN_S;
+            const dy = (s.vy || 0) * sy * TRAJECTORY_SPAN_S;
+
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                const tailX = x - dx, tailY = y - dy;
+                const headX = x + dx, headY = y + dy;
+                ctx.strokeStyle = "#00b464";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(headX, headY);
+                ctx.stroke();
+
+                const angle = Math.atan2(headY - tailY, headX - tailX);
+                const ah = 8;
+                ctx.beginPath();
+                ctx.moveTo(headX, headY);
+                ctx.lineTo(headX - ah * Math.cos(angle - 0.4), headY - ah * Math.sin(angle - 0.4));
+                ctx.moveTo(headX, headY);
+                ctx.lineTo(headX - ah * Math.cos(angle + 0.4), headY - ah * Math.sin(angle + 0.4));
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = "#00ff88";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 12, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.fillStyle = "#00ff88";
+            ctx.font = "12px monospace";
+            ctx.fillText(s.name, x + 16, y + 4);
+        }
+    };
+    img.src = `${BASE}/api/rso/solved_frame?t=${Date.now()}`;
+}
+
 async function refreshSystemStatus() {
     try {
         const res = await fetch(`${BASE}/system/status`);
@@ -255,6 +407,7 @@ async function refreshSystemStatus() {
         console.error("System status fetch failed:", err);
     }
 }
+
 async function setExposureOptical() {
   const ms = parseFloat(document.getElementById("exposureMs").value);
   if (!Number.isFinite(ms) || ms <= 0) {
@@ -282,7 +435,7 @@ async function setExposureOptical() {
 async function setFrameRateOptical() {
   const fps = parseFloat(document.getElementById("fpsVal").value);
   if (!Number.isFinite(fps) || fps <= 0) {
-    alert("FPS must be a number > 0");
+    alert("FPS failed: must be a number > 0");
     return;
   }
 
