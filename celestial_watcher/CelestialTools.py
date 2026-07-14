@@ -161,7 +161,7 @@ def gaussian_denoise_parallel(frames, kernel_size: int = 5, sigma: float = 1.0, 
 # ============================================================
 # Intensity thresholding
 # ============================================================
-def _threshold_frame(frame: np.ndarray, percentile: float, percentile_sample_step: int, min_area: int, max_area: int, max_aspect: float, min_compactness: float) -> np.ndarray | None:
+def _threshold_frame(frame: np.ndarray, percentile: float, percentile_sample_step: int, min_area: int, max_area: int, max_aspect: float, min_compactness: float, filter_components: bool = True) -> np.ndarray | None:
     if frame is None:
         return None
 
@@ -175,6 +175,9 @@ def _threshold_frame(frame: np.ndarray, percentile: float, percentile_sample_ste
 
     # OpenCV thresholding is faster than np.where().
     _, binary = cv2.threshold(gray, threshold_value, 255, cv2.THRESH_BINARY)
+
+    if not filter_components:
+        return binary
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8, ltype=cv2.CV_32S)
 
@@ -216,11 +219,11 @@ def _threshold_frame(frame: np.ndarray, percentile: float, percentile_sample_ste
     return cv2.medianBlur(cleaned, 3)
 
 
-def threshold_parallel(frames, max_workers: int = MAX_WORKERS, percentile: float = 99.95, percentile_sample_step: int = 4, min_area: int = 10, max_area: int = 150, max_aspect: float = 3.0, min_compactness: float = 0.3):
+def threshold_parallel(frames, max_workers: int = MAX_WORKERS, percentile: float = 99.95, percentile_sample_step: int = 4, min_area: int = 10, max_area: int = 150, max_aspect: float = 3.0, min_compactness: float = 0.3, filter_components: bool = True):
     if not frames:
         raise RuntimeError("No frames provided")
 
-    worker = partial(_threshold_frame, percentile=percentile, percentile_sample_step=percentile_sample_step, min_area=min_area, max_area=max_area, max_aspect=max_aspect, min_compactness=min_compactness)
+    worker = partial(_threshold_frame, percentile=percentile, percentile_sample_step=percentile_sample_step, min_area=min_area, max_area=max_area, max_aspect=max_aspect, min_compactness=min_compactness, filter_components=filter_components)
 
     return run_parallel(worker, frames, max_workers=max_workers,)
 
