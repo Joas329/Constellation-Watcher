@@ -68,7 +68,7 @@ app = Flask(__name__, static_folder=str(WEBAPP_DIR), static_url_path="/static")
 
 CAMERA_MANAGER = None
 CELESTIAL_WATCHER = None
-
+RSO_TRACKER = None
 
 @app.route("/")
 def index():
@@ -169,10 +169,32 @@ def system_status():
         "drift_ms": time_status["drift_ms"],
     }
 
-def run_server(camera_manager, celestial_watcher, host="0.0.0.0", port=5000):
-    global CAMERA_MANAGER, CELESTIAL_WATCHER
+@app.route("/api/rso/overlay")
+def overlay():
+    empty = {"capture_time": None, "frame_w": 4096, "frame_h": 3000,
+             "rsos": [], "stars": []}
+    if RSO_TRACKER is None:
+        return empty
+    result = RSO_TRACKER.get_latest_hits()
+    if result is None:
+        return empty
+    capture_time, hits, _frame, star_matches = result
+    if capture_time is None:
+        return empty
+    return {
+        "capture_time": capture_time.isoformat(),
+        "frame_w": 4096,
+        "frame_h": 3000,
+        "rsos": [{"name": n, "norad": nid, "x": x, "y": y, "vx": vx, "vy": vy}
+                 for n, nid, x, y, vx, vy in hits],
+        "stars": [{"x": fx, "y": fy} for fx, fy, _ix, _iy in star_matches],
+    }
+
+def run_server(camera_manager, celestial_watcher, rso_tracker, host="0.0.0.0", port=5000):
+    global CAMERA_MANAGER, CELESTIAL_WATCHER, RSO_TRACKER
     CAMERA_MANAGER = camera_manager
     CELESTIAL_WATCHER = celestial_watcher
+    RSO_TRACKER = rso_tracker
 
     print(f"[stream_server] JPEG encoder: {ENCODER}")
     print(f"[stream_server] JPEG encoder: {ENCODER}")
