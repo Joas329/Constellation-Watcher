@@ -5,11 +5,10 @@ from astropy.wcs import WCS, FITSFixedWarning
 warnings.simplefilter("ignore", FITSFixedWarning)
 
 POLL_INTERVAL_S = 0.5
-SOLVE_INTERVAL_S = 5.0
 SCALE_LOW_DEG = 15
 SCALE_HIGH_DEG = 18
 ASTROMETRY_CFG = os.path.join(os.path.dirname(__file__), "astrometry.cfg")
-BLIND_SOLVE_TIMEOUT_S = 300
+BLIND_SOLVE_TIMEOUT_S = 60
 HINTED_SOLVE_TIMEOUT_S = 30
 
 class LocalPlateSolverExecutive:
@@ -23,7 +22,8 @@ class LocalPlateSolverExecutive:
         self._solver_thread = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
-        self.latest_wcs = None  # (timestamp, astropy.wcs.WCS)
+        self._last_attempted_time = None
+        self.latest_solution = None  # (capture_time, wcs, frame, star_matches)
 
     def start(self):
         with self._lock:
@@ -46,7 +46,7 @@ class LocalPlateSolverExecutive:
             self._stop_event.set()
             thread = self._solver_thread
 
-        thread.join(timeout=BLIND_SOLVE_TIMEOUT_S + 5.0)
+        thread.join(timeout=10.0)
 
         with self._lock:
             self._solver_thread = None
@@ -54,9 +54,25 @@ class LocalPlateSolverExecutive:
         print("Plate Solver stopped.")
         return "Plate Solver stopped."
 
+    def get_latest_solution(self):
+        with self._lock:
+            return self.latest_solution
+
+    # Back-compat accessors (older consumers, e.g. server endpoint)
+
     def get_latest_wcs(self):
         with self._lock:
-            return self.latest_wcs
+            if self.latest_solution is None:
+                return None
+            capture_time, wcs, _, _ = self.latest_solution
+            return (capture_time, wcs)
+
+    def get_latest_solved_frame(self):
+        with self._lock:
+            if self.latest_solution is None:
+                return None
+            capture_time, _, frame, matches = self.latest_solution
+            return (capture_time, frame, matches)
 
     def _run_solver_logic(self):
         while not self._stop_event.is_set():
@@ -68,20 +84,23 @@ class LocalPlateSolverExecutive:
 
             frame, capture_time = result
 
+            if capture_time is not None and capture_time == self._last_attempted_time:
+                self._stop_event.wait(POLL_INTERVAL_S)
+                continue
+
             if self._stop_event.is_set():
                 break
             print("Plate solving frame...")
-            wcs = self._solve_frame(frame)
+            solved = self._solve_frame(frame)
+            self._last_attempted_time = capture_time
 
-            if wcs is None:
+            if solved is None:
                 print("Frame did not solve.")
             else:
+                wcs, star_matches = solved
                 with self._lock:
-                    self.latest_wcs = (capture_time, wcs)
-                print(f"Solved. Center RA/Dec = "
-                      f"{wcs.wcs.crval[0]:.4f}, {wcs.wcs.crval[1]:.4f}")
-
-            self._stop_event.wait(SOLVE_INTERVAL_S)
+                    self.latest_solution = (capture_time, wcs, frame, star_matches)
+                print(f"Solved. Center RA/Dec = {wcs.wcs.crval[0]:.4f}, {wcs.wcs.crval[1]:.4f} | {len(star_matches)} reference stars")
 
         print("Plate Solver thread stopped.")
 
@@ -107,10 +126,10 @@ class LocalPlateSolverExecutive:
             ]
 
             with self._lock:
-                previous = self.latest_wcs
+                previous = self.latest_solution
 
             if previous is not None:
-                _, prev_wcs = previous
+                _, prev_wcs, _, _ = previous
                 cmd += ["--ra", str(prev_wcs.wcs.crval[0]),
                         "--dec", str(prev_wcs.wcs.crval[1]),
                         "--radius", "20"]
@@ -136,4 +155,13 @@ class LocalPlateSolverExecutive:
             if not os.path.isfile(wcs_path):
                 return None
 
-            return WCS(fits.getheader(wcs_path))
+            wcs = WCS(fits.getheader(wcs_path))
+
+            matches = []
+            corr_path = os.path.join(tmp_dir, "frame.corr")
+            if os.path.isfile(corr_path):
+                with fits.open(corr_path) as hdul:
+                    d = hdul[1].data
+                    matches = list(zip(map(float, d["field_x"]), map(float, d["field_y"]), map(float, d["index_x"]), map(float, d["index_y"])))
+
+            return wcs, matches
