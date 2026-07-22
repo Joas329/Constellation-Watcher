@@ -22,9 +22,9 @@ def main():
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    camera_manager = FakeCameraManager(IMAGE_DIRECTORY, 20.0, True, False)
+    # camera_manager = FakeCameraManager(IMAGE_DIRECTORY, 20.0, True, False)
 
-    # camera_manager = CameraManager()
+    camera_manager = CameraManager(grayscale=True)
     celestial_watcher = CelestialWatcherExecutive(camera_manager)
     plate_solver = LocalPlateSolverExecutive(celestial_watcher)
     rso_tracker = RSOTracker(plate_solver)
