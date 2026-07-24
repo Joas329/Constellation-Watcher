@@ -35,7 +35,7 @@ def main():
     # Start Celestial Channels
     watcher = CelestialWatcherStage(raw_frames, processed_frames)
     solver = PlateSolverStage(processed_frames, solutions)
-    tracker = RSOTrackerStage(solutions, detections)
+    tracker = RSOTrackerStage(solutions, detections, gps=gps_manager)
     stages = [watcher, solver, tracker]
 
     # SIGINT/SIGTERM unblock waitress by raising into the main thread
