@@ -102,6 +102,7 @@ app = Flask(__name__, static_folder=str(WEBAPP_DIR), static_url_path="/static")
 # set once in run_server. CAMERA_MANAGER is kept as a direct handle because the
 # control routes issue commands to hardware; frame flow goes through CHANNELS.
 CAMERA_MANAGER = None
+GPS_MANAGER = None
 CHANNELS = {}
 _SERVER = None
 
@@ -271,16 +272,25 @@ def set_gain():
     return {"ok": True, "applied_db": applied}
 
 def get_time_sync_status():
-    """
-    Temporary stub.
+    if GPS_MANAGER is None:
+        return {"time_sync": "NO_GPS", "drift_ms": None, "lat": None, "lon": None, "alt_m": None}
 
-    Later this will query the Time Service /
-    GPS / NTP synchronization subsystem.
-    """
+    fix = GPS_MANAGER.get_fix()
+    if fix is None:
+        return {"time_sync": "ACQUIRING", "drift_ms": None, "lat": None, "lon": None, "alt_m": None}
+
+    # RMC-based host-vs-GPS offset, if a valid RMC has been seen
+    ts = GPS_MANAGER.get_time_status()
+    drift_ms = round(ts["host_offset_s"] * 1000.0, 1) if ts is not None else None
 
     return {
-        "time_sync": "UNKNOWN",
-        "drift_ms": None
+        "time_sync": "FIX",
+        "drift_ms": drift_ms,
+        "lat": fix["lat"],
+        "lon": fix["lon"],
+        "alt_m": fix["alt_m"],
+        "n_sats": fix["n_sats"],
+        "fix_quality": fix["fix_quality"],
     }
 
 @app.route("/system/status", methods=["GET"])
@@ -306,10 +316,12 @@ def system_status():
         "disk_used_gb": disk.used / 1024**3,
         "disk_total_gb": disk.total / 1024**3,
         "uptime_s": time.time() - START_TIME,
-
-        # Time service
         "time_sync": time_status["time_sync"],
         "drift_ms": time_status["drift_ms"],
+        "gps_lat": time_status["lat"],       # add
+        "gps_lon": time_status["lon"],       # add
+        "gps_alt_m": time_status["alt_m"],   # add
+        "gps_sats": time_status.get("n_sats"),   # optional: sat count for the panel
     }
 
 @app.route("/api/rso/overlay")
@@ -349,9 +361,10 @@ def solved_frame():
         return Response(status=204)
     return Response(encode_jpeg(prepare(np.ascontiguousarray(frame), width, stretch), quality=70), mimetype="image/jpeg", headers={"Cache-Control": "no-cache"})
 
-def run_server(camera, channels, host="0.0.0.0", port=5000):
-    global CAMERA_MANAGER, CHANNELS, _SERVER
+def run_server(camera, channels, gps, host="0.0.0.0", port=5000):
+    global CAMERA_MANAGER, CHANNELS, _SERVER, GPS_MANAGER
     CAMERA_MANAGER = camera
+    GPS_MANAGER = gps
     CHANNELS = channels
 
     print(f"[stream_server] JPEG encoder: {ENCODER}")

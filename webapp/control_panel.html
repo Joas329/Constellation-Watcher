@@ -117,6 +117,16 @@
                                     </div>
 
                                     <hr>
+                                        <div>
+                                            GPS: <span id="gpsStatus" class="badge bg-secondary">--</span>
+                                        </div>
+                                        <div>
+                                            lat: <span id="lat">--</span>, lon: <span id="lon">--</span>, alt: <span id="alt">--</span>
+                                        </div>
+                                        <div>
+                                            sats: <span id="gpsSats">--</span>
+                                        </div>
+                                    <hr>
 
                                     <div>
                                         CPU Temp: <span id="cpuTemp">-- °C</span>
@@ -561,7 +571,7 @@ async function refreshSystemStatus() {
 
         document.getElementById("uptime").innerText = uptimeText;
 
-        // Time Sync Status
+        // Time Sync Status. Server sends FIX / ACQUIRING / NO_GPS.
         const timeSyncElem = document.getElementById("timeSync");
 
         if (timeSyncElem) {
@@ -570,23 +580,45 @@ async function refreshSystemStatus() {
             timeSyncElem.innerText = syncStatus;
 
             timeSyncElem.className =
-                syncStatus === "SYNCED"
+                syncStatus === "FIX"
                     ? "badge bg-success"
-                    : syncStatus === "UNSYNCED"
+                    : syncStatus === "NO_GPS"
                     ? "badge bg-danger"
-                    : "badge bg-warning";
+                    : "badge bg-warning";   // ACQUIRING / UNKNOWN stay yellow
         }
 
-        // Clock Drift
+        // Clock Drift (host-vs-GPS offset, ms). null until a valid RMC is seen.
         const driftElem = document.getElementById("driftMs");
 
         if (driftElem) {
             driftElem.innerText =
-                s.drift_ms !== undefined &&
-                s.drift_ms !== null
+                s.drift_ms !== undefined && s.drift_ms !== null
                     ? Number(s.drift_ms).toFixed(1)
                     : "--";
         }
+
+        // GPS position. Fields are null until the receiver gets a fix.
+        const gpsStatusEl = document.getElementById("gpsStatus");
+        if (gpsStatusEl) {
+            const st = s.time_sync || "UNKNOWN";
+            gpsStatusEl.innerText = st;
+            gpsStatusEl.className =
+                st === "FIX"
+                    ? "badge bg-success"
+                    : st === "NO_GPS"
+                    ? "badge bg-danger"
+                    : "badge bg-warning";
+        }
+
+        const latEl = document.getElementById("lat");
+        const lonEl = document.getElementById("lon");
+        const altEl = document.getElementById("alt");
+        const satsEl = document.getElementById("gpsSats");
+
+        if (latEl) latEl.innerText = (s.gps_lat != null) ? Number(s.gps_lat).toFixed(6) : "--";
+        if (lonEl) lonEl.innerText = (s.gps_lon != null) ? Number(s.gps_lon).toFixed(6) : "--";
+        if (altEl) altEl.innerText = (s.gps_alt_m != null) ? Number(s.gps_alt_m).toFixed(0) + " m" : "--";
+        if (satsEl) satsEl.innerText = (s.gps_sats != null) ? s.gps_sats : "--";
 
     } catch (err) {
         console.error("System status fetch failed:", err);
