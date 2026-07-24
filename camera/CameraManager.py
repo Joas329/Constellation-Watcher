@@ -7,10 +7,10 @@ from pypylon import pylon, genicam
 
 
 class CameraManager:
-    def __init__(self, grayscale: bool = False, bit_depth: int = 8,
-                 require_device_time: bool = False, resync_interval: float = 60.0):
+    def __init__(self, raw, grayscale: bool = False, bit_depth: int = 8, require_device_time: bool = False, resync_interval: float = 60.0):
         print("Initializing Camera Manager")
 
+        self._raw = raw
         self.grayscale = grayscale
         self.bit_depth = bit_depth
         self.require_device_time = require_device_time
@@ -33,12 +33,6 @@ class CameraManager:
         self._exposure_s = 0.0
         self._chunk_exposure = False
         self._last_sync = 0.0
-
-        # frame and capture time are written together under frame_lock so
-        # get_latest_frame_with_time() can never mix a frame with a stale time
-        self.last_frame = None
-        self.last_capture_time = None
-        self.frame_lock = threading.Lock()
 
         self.acquisition_thread = None
         self._stop_event = threading.Event()
@@ -206,9 +200,7 @@ class CameraManager:
 
     def set_exposure_us(self, exposure_us: float) -> float:
         if self.camera is None or not self.camera.IsOpen():
-            raise RuntimeError(
-                "Camera is not open. Press Start Viewfinder before setting exposure."
-            )
+            raise RuntimeError("Camera is not open. Press Start Viewfinder before setting exposure.")
 
         try:
             self.camera.ExposureAuto.Value = "Off"
@@ -225,10 +217,7 @@ class CameraManager:
             raise RuntimeError(f"Could not read exposure limits: {e}") from e
 
         if not low <= exposure_us <= high:
-            raise ValueError(
-                f"Exposure {exposure_us / 1000.0:.3f} ms outside camera range "
-                f"[{low / 1000.0:.3f}, {high / 1000.0:.3f}] ms"
-            )
+            raise ValueError(f"Exposure {exposure_us / 1000.0:.3f} ms outside camera range [{low / 1000.0:.3f}, {high / 1000.0:.3f}] ms")
 
         # some models only accept multiples of a hardware increment and reject
         # anything else outright rather than rounding
@@ -244,18 +233,13 @@ class CameraManager:
             node.Value = exposure_us
             applied_us = float(node.Value)
         except genicam.GenericException as e:
-            raise RuntimeError(
-                f"Camera rejected exposure {exposure_us / 1000.0:.3f} ms: "
-                f"{type(e).__name__}: {e}"
-            ) from e
+            raise RuntimeError(f"Camera rejected exposure {exposure_us / 1000.0:.3f} ms: {type(e).__name__}: {e}") from e
 
         self._exposure_s = applied_us * 1e-6
 
         fps = self._resulting_fps()
         ceiling = 1e6 / applied_us
-        print(f"Exposure: requested {exposure_us / 1000.0:.3f} ms, "
-              f"applied {applied_us / 1000.0:.3f} ms, "
-              f"frame rate ceiling {ceiling:.2f} fps"
+        print(f"Exposure: requested {exposure_us / 1000.0:.3f} ms, applied {applied_us / 1000.0:.3f} ms, frame rate ceiling {ceiling:.2f} fps"
               + (f", camera reports {fps:.2f} fps" if fps is not None else ""))
 
         return applied_us
@@ -291,8 +275,7 @@ class CameraManager:
 
         if self._sync_device_clock():
             drift = self._clock_offset - previous
-            print(f"Clock resync: drift {drift * 1e3:+.3f} ms, "
-                f"uncertainty {self.clock_uncertainty * 1e3:.3f} ms")
+            print(f"Clock resync: drift {drift * 1e3:+.3f} ms, uncertainty {self.clock_uncertainty * 1e3:.3f} ms")
             return
 
         # keep the last good offset so timestamps stay usable, but stop claiming they're synced, and don't retry on every grab
@@ -325,19 +308,13 @@ class CameraManager:
                 print("Camera acquisition is already acquiring.")
                 return
 
-            with self.frame_lock:
-                self.last_frame = None
-                self.last_capture_time = None
-
             if not self.basler_devices:
                 raise RuntimeError("No Basler cameras detected.")
 
             selected = self.basler_devices[index]
             self.active_device = selected
 
-            self.camera = pylon.InstantCamera(
-                self.tl_factory.CreateDevice(selected["device_info"])
-            )
+            self.camera = pylon.InstantCamera(self.tl_factory.CreateDevice(selected["device_info"]))
 
             self.camera.Open()
 
@@ -351,14 +328,10 @@ class CameraManager:
                       f"offset uncertainty {self.clock_uncertainty * 1e3:.3f} ms, "
                       f"exposure {self._exposure_s * 1e3:.1f} ms")
             elif self.require_device_time:
-                raise RuntimeError(
-                    f"{selected['model']} exposes no latchable device clock "
-                    "and require_device_time is set."
-                )
+                raise RuntimeError(f"{selected['model']} exposes no latchable device clock and require_device_time is set.")
             else:
                 self.time_source = "host"
-                print("WARNING: no device clock available. Falling back to host "
-                      "retrieval time, expect tens of ms of jitter.")
+                print("WARNING: no device clock available. Falling back to host retrieval time, expect tens of ms of jitter.")
 
             self.converter = pylon.ImageFormatConverter()
             # mirrors FakeCameraManager: grayscale -> single channel, else 3-channel BGR
@@ -371,18 +344,13 @@ class CameraManager:
             # must precede StartGrabbing: chunk mode changes the payload layout
             self._chunk_exposure = self._enable_exposure_chunk()
             if not self._chunk_exposure:
-                print("Note: no per-frame exposure chunk. Mid-exposure correction "
-                      "uses the last value set, which is stale for frames already "
-                      "integrating when exposure changes.")
+                print("Note: no per-frame exposure chunk. Mid-exposure correction uses the last value set, which is stale for frames already integrating when exposure changes.")
 
             self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
 
             self._stop_event.clear()
 
-            self.acquisition_thread = threading.Thread(
-                target=self._acquisition_loop,
-                daemon=False
-            )
+            self.acquisition_thread = threading.Thread(target=self._acquisition_loop, daemon=False)
             self.acquisition_thread.start()
 
         print(f"Started acquisition: {selected['name']}")
@@ -413,9 +381,7 @@ class CameraManager:
                     image = self.converter.Convert(grab)
                     frame = image.GetArray()
 
-                    with self.frame_lock:
-                        self.last_frame = frame.copy()
-                        self.last_capture_time = capture_time
+                    self._raw.publish(frame.copy(), capture_time)
 
                 finally:
                     grab.Release()
@@ -425,20 +391,6 @@ class CameraManager:
                     print(f"Acquisition loop error: {e}")
 
         print("Acquisition thread exited.")
-
-    def get_latest_frame(self):
-        with self.frame_lock:
-            if self.last_frame is None:
-                return None
-
-            return self.last_frame.copy()
-
-    def get_latest_frame_with_time(self):
-        with self.frame_lock:
-            if self.last_frame is None:
-                return None
-
-            return self.last_frame.copy(), self.last_capture_time
 
     def stop_acquisition(self) -> None:
         with self._state_lock:
@@ -472,7 +424,3 @@ class CameraManager:
         self.active_device = None
         self.time_source = None
         self._chunk_exposure = False
-
-        with self.frame_lock:
-            self.last_frame = None
-            self.last_capture_time = None

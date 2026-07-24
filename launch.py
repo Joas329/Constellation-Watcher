@@ -1,56 +1,59 @@
 #!/usr/bin/env python3
 import signal
-import threading
 
+from transport.channel import Channel
 from server.server import run_server
 from camera.CameraManager import CameraManager
 from camera.FakeCameraManager import FakeCameraManager
-from celestial_watcher.RSOTracker import RSOTracker
-from celestial_watcher.CelestialWatcherExecutive import CelestialWatcherExecutive
-from celestial_watcher.LocalPlateSolverExecutive import LocalPlateSolverExecutive
+from celestial_watcher.RSOTrackerStage import RSOTrackerStage
+from celestial_watcher.CelestialWatcherStage import CelestialWatcherStage
+from celestial_watcher.PlateSolverStage import PlateSolverStage
+from celestial_watcher.CelestialTools import shutdown_processing_pool
 
-shutdown_event = threading.Event()
-
-IMAGE_DIRECTORY = ("/media/joas329/My Passport/celestial_data_chunk")
-
-def handle_shutdown(signum, frame):
-    print(f"\nShutdown signal received: {signum}")
-    shutdown_event.set()
-    raise KeyboardInterrupt
+IMAGE_DIRECTORY = "/media/joas329/My Passport/celestial_data_chunk"
+USE_FAKE_CAMERA = False
 
 def main():
+    # one channel per hop; the composition root is the only place the pipeline topology is written down. Each stage knows its source and sink, nothing else.
+    raw_frames = Channel("raw_frames")
+    processed_frames = Channel("processed_frames")
+    solutions = Channel("solutions")
+    detections = Channel("detections")
+
+    if USE_FAKE_CAMERA:
+        camera = FakeCameraManager(raw_frames, IMAGE_DIRECTORY, fps=20.0, loop=True, grayscale=True)
+    else:
+        camera = CameraManager(raw_frames, grayscale=True)
+
+    watcher = CelestialWatcherStage(raw_frames, processed_frames)
+    solver = PlateSolverStage(processed_frames, solutions)
+    tracker = RSOTrackerStage(solutions, detections)
+    stages = [watcher, solver, tracker]
+
+    # SIGINT/SIGTERM unblock waitress by raising into the main thread
+    def handle_shutdown(signum, frame):
+        print(f"\nShutdown signal received: {signum}")
+        raise KeyboardInterrupt
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
-    # camera_manager = FakeCameraManager(IMAGE_DIRECTORY, 20.0, True, False)
-
-    camera_manager = CameraManager(grayscale=True)
-    celestial_watcher = CelestialWatcherExecutive(camera_manager)
-    plate_solver = LocalPlateSolverExecutive(celestial_watcher)
-    rso_tracker = RSOTracker(plate_solver)
-
     try:
-        # Start Celestial
-        celestial_watcher.start()
+        for stage in stages:
+            stage.start()
 
-        # Start Plate Solver
-        plate_solver.start()
-
-        # Start RSO Tracker
-        rso_tracker.start()
-
-        # Start the server
-        run_server(camera_manager, celestial_watcher, rso_tracker)
+        # camera acquisition is started by the HTTP viewfinder route, so the stages just block on empty channels until frames start flowing.
+        run_server(camera, channels={"raw": raw_frames, "processed": processed_frames, "detections": detections})
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received.")
 
     finally:
         print("Cleaning up...")
-        plate_solver.stop()
-        rso_tracker.stop()
-        celestial_watcher.stop()
-        camera_manager.close()
+
+        for stage in reversed(stages):
+            stage.stop()
+        camera.close()
+        shutdown_processing_pool()
         print("Shutdown complete.")
 
 if __name__ == "__main__":
