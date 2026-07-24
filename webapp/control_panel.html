@@ -25,6 +25,15 @@
             left: 0;
             pointer-events: none;
         }
+        /* keeps the row from collapsing before the first frame arrives */
+        .viewfinder img {
+            background: #101214;
+            min-height: 140px;
+        }
+        .expanded img {
+            background: #101214;
+            min-height: 320px;
+        }
     </style>
 </head>
 
@@ -42,7 +51,7 @@
         </div>
     </div>
 
-    <!-- ROW 2: Controls (former left column, now full width) -->
+    <!-- ROW 2: Controls -->
     <div class="row">
         <div class="col">
             <div class="card shadow-sm mb-3">
@@ -66,7 +75,7 @@
                                         <button class="btn btn-primary" onclick="setExposureOptical()">Set</button>
                                     </div>
 
-                                    <!-- FPS (placeholder route button for future) -->
+                                    <!-- FPS -->
                                     <label for="fpsVal">Frame Rate (fps)</label>
                                     <div class="input-group mb-3">
                                         <input id="fpsVal" class="form-control" type="number" step="0.1" min="0" placeholder="e.g. 5.0">
@@ -148,21 +157,42 @@
         </div>
     </div>
 
-    <!-- ROW 3: Processed stream (left) | Solved + RSO overlay (right) -->
+    <!-- ROW 3: Raw | Processed | Solved + RSO overlay -->
     <div class="row">
-        <div class="col-md-6">
-            <div class="card shadow-sm mb-3">
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-3 h-100 viewfinder">
+                <div class="card-header bg-secondary text-white">
+                    <strong>Raw Camera Output</strong>
+                </div>
+                <div class="card-body">
+                    <img id="rawFrameImg" src="" alt="Raw camera output" style="width: 100%;">
+                </div>
+                <div class="card-footer bg-white">
+                    <button id="select-raw" class="btn btn-outline-primary btn-sm w-100" onclick="selectFeed('raw')">
+                        Expand below
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-3 h-100 viewfinder">
                 <div class="card-header bg-secondary text-white">
                     <strong>Processed Celestial Frame</strong>
                 </div>
                 <div class="card-body">
                     <img id="processedFrameImg" src="" alt="Processed celestial frame" style="width: 100%;">
                 </div>
+                <div class="card-footer bg-white">
+                    <button id="select-processed" class="btn btn-outline-primary btn-sm w-100" onclick="selectFeed('processed')">
+                        Expand below
+                    </button>
+                </div>
             </div>
         </div>
 
-        <div class="col-md-6">
-            <div class="card shadow-sm mb-3">
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-3 h-100 viewfinder">
                 <div class="card-header bg-secondary text-white">
                     <strong>Plate Solved + RSO Overlay</strong>
                 </div>
@@ -175,6 +205,29 @@
                         RSO overlay solved at: <span id="overlayTime">--</span>
                     </small>
                 </div>
+                <div class="card-footer bg-white">
+                    <button id="select-solved" class="btn btn-outline-primary btn-sm w-100" onclick="selectFeed('solved')">
+                        Expand below
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ROW 4: Expanded view of the selected viewfinder -->
+    <div class="row">
+        <div class="col">
+            <div class="card shadow-sm mb-3 expanded">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <strong id="expandedLabel">Raw Camera Output</strong>
+                    <span id="expandedStatus" class="badge bg-secondary">idle</span>
+                </div>
+                <div class="card-body">
+                    <div class="overlay-container">
+                        <img id="expandedImg" src="" alt="Expanded viewfinder">
+                        <canvas id="expandedOverlay"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -185,7 +238,38 @@
 const BASE = "";
 const TRAJECTORY_SPAN_S = 5.0;  // trajectory line spans +/- this many seconds of motion
 
+// the three small viewfinders ask for a downscaled frame; only the expanded
+// panel pulls full resolution. Requires server-side support for the param.
+const THUMB_QUERY = "w=640";
+
+const FEEDS = {
+    raw: {
+        label: "Raw Camera Output",
+        url: "/api/camera/stream",
+        kind: "stream",
+        img: "rawFrameImg",
+        canvas: null,
+    },
+    processed: {
+        label: "Processed Celestial Frame",
+        url: "/api/celestial/processed_frame",
+        kind: "stream",
+        img: "processedFrameImg",
+        canvas: null,
+    },
+    solved: {
+        label: "Plate Solved + RSO Overlay",
+        url: "/api/rso/solved_frame",
+        kind: "snapshot",
+        img: "solvedFrameImg",
+        canvas: "rsoOverlay",
+    },
+};
+
+let selectedFeed = "raw";
+let running = false;
 let overlayTimer = null;
+let lastOverlayData = null;
 
 async function apiCall(endpoint) {
     try {
@@ -197,14 +281,59 @@ async function apiCall(endpoint) {
     }
 }
 
+function feedUrl(key, thumbnail) {
+    const feed = FEEDS[key];
+    const query = thumbnail ? `${THUMB_QUERY}&t=${Date.now()}` : `t=${Date.now()}`;
+    return `${BASE}${feed.url}?${query}`;
+}
+
+function selectFeed(key) {
+    selectedFeed = key;
+    const feed = FEEDS[key];
+
+    document.getElementById("expandedLabel").innerText = feed.label;
+
+    for (const k of Object.keys(FEEDS)) {
+        const btn = document.getElementById(`select-${k}`);
+        btn.classList.toggle("btn-primary", k === key);
+        btn.classList.toggle("btn-outline-primary", k !== key);
+        btn.innerText = k === key ? "Showing below" : "Expand below";
+    }
+
+    const canvas = document.getElementById("expandedOverlay");
+    canvas.style.display = feed.canvas ? "block" : "none";
+    clearCanvas(canvas);
+
+    const img = document.getElementById("expandedImg");
+
+    if (!running) {
+        img.removeAttribute("src");
+        setExpandedStatus("idle", "bg-secondary");
+        return;
+    }
+
+    // snapshot feeds get their src from drawOverlay on the next tick, but seed
+    // one immediately so the panel is not blank for a whole second
+    img.src = feedUrl(key, false);
+    setExpandedStatus("live", "bg-success");
+}
+
+function setExpandedStatus(text, badgeClass) {
+    const elem = document.getElementById("expandedStatus");
+    elem.innerText = text;
+    elem.className = `badge ${badgeClass}`;
+}
+
 async function startViewfinder() {
     await fetch("/api/camera/start", { method: "POST" });
+    running = true;
 
-    document.getElementById("processedFrameImg").src =
-        `/api/celestial/processed_frame?t=${Date.now()}`;
+    document.getElementById("rawFrameImg").src = feedUrl("raw", true);
+    document.getElementById("processedFrameImg").src = feedUrl("processed", true);
 
-    document.getElementById("solvedFrameImg").src =
-        `/api/celestial/processed_frame?t=${Date.now()}`;
+    // the solved thumbnail is driven by drawOverlay so image and overlay
+    // always come from the same solve
+    selectFeed(selectedFeed);
 
     if (overlayTimer === null) {
         overlayTimer = setInterval(drawOverlay, 1000);
@@ -212,29 +341,37 @@ async function startViewfinder() {
 }
 
 function stopViewfinder() {
-    document.getElementById("processedFrameImg").removeAttribute("src");
-    document.getElementById("solvedFrameImg").removeAttribute("src");
+    running = false;
+
+    for (const key of Object.keys(FEEDS)) {
+        document.getElementById(FEEDS[key].img).removeAttribute("src");
+    }
+    document.getElementById("expandedImg").removeAttribute("src");
 
     if (overlayTimer !== null) {
         clearInterval(overlayTimer);
         overlayTimer = null;
     }
+
+    lastOverlayData = null;
     clearOverlay();
+    setExpandedStatus("idle", "bg-secondary");
 
     fetch("/api/system/stop_camera", { method: "POST" });
 }
 
-function clearOverlay() {
-    const canvas = document.getElementById("rsoOverlay");
+function clearCanvas(canvas) {
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function clearOverlay() {
+    clearCanvas(document.getElementById("rsoOverlay"));
+    clearCanvas(document.getElementById("expandedOverlay"));
     document.getElementById("overlayTime").innerText = "--";
 }
 
 async function drawOverlay() {
-    const img = document.getElementById("solvedFrameImg");
-    const canvas = document.getElementById("rsoOverlay");
-
     let data;
     try {
         const res = await fetch(`${BASE}/api/rso/overlay`);
@@ -250,76 +387,124 @@ async function drawOverlay() {
         return;
     }
 
-    img.onload = () => {
-        canvas.width = img.clientWidth;
-        canvas.height = img.clientHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    lastOverlayData = data;
+    document.getElementById("overlayTime").innerText = data.capture_time;
 
-        document.getElementById("overlayTime").innerText = data.capture_time;
+    const stamp = Date.now();
 
-        const sx = canvas.width / data.frame_w;
-        const sy = canvas.height / data.frame_h;
+    refreshSolvedTarget(
+        "solvedFrameImg", "rsoOverlay",
+        `${BASE}${FEEDS.solved.url}?${THUMB_QUERY}&t=${stamp}`, data
+    );
 
-        // Matched stars: residual line, circle on detection, cross on catalog
-        for (const st of data.stars || []) {
-            const fx = st.fx * sx, fy = st.fy * sy;
-            const ix = st.ix * sx, iy = st.iy * sy;
-
-            ctx.strokeStyle = "#b4b4b4";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(fx, fy);
-            ctx.lineTo(ix, iy);
-            ctx.stroke();
-
-            ctx.strokeStyle = "#00ffff";
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.arc(fx, fy, 6, 0, 2 * Math.PI);
-            ctx.stroke();
-        }
-
-        // RSOs: trajectory arrow, then circle + name on top
-        for (const s of data.rsos) {
-            const x = s.x * sx;
-            const y = s.y * sy;
-            const dx = (s.vx || 0) * sx * TRAJECTORY_SPAN_S;
-            const dy = (s.vy || 0) * sy * TRAJECTORY_SPAN_S;
-
-            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-                const tailX = x - dx, tailY = y - dy;
-                const headX = x + dx, headY = y + dy;
-                ctx.strokeStyle = "#00b464";
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(tailX, tailY);
-                ctx.lineTo(headX, headY);
-                ctx.stroke();
-
-                const angle = Math.atan2(headY - tailY, headX - tailX);
-                const ah = 8;
-                ctx.beginPath();
-                ctx.moveTo(headX, headY);
-                ctx.lineTo(headX - ah * Math.cos(angle - 0.4), headY - ah * Math.sin(angle - 0.4));
-                ctx.moveTo(headX, headY);
-                ctx.lineTo(headX - ah * Math.cos(angle + 0.4), headY - ah * Math.sin(angle + 0.4));
-                ctx.stroke();
-            }
-
-            ctx.strokeStyle = "#00ff88";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(x, y, 12, 0, 2 * Math.PI);
-            ctx.stroke();
-
-            ctx.fillStyle = "#00ff88";
-            ctx.font = "12px monospace";
-            ctx.fillText(s.name, x + 16, y + 4);
-        }
-    };
-    img.src = `${BASE}/api/rso/solved_frame?t=${Date.now()}`;
+    if (selectedFeed === "solved") {
+        refreshSolvedTarget(
+            "expandedImg", "expandedOverlay",
+            `${BASE}${FEEDS.solved.url}?t=${stamp}`, data
+        );
+    }
 }
+
+function refreshSolvedTarget(imgId, canvasId, url, data) {
+    const img = document.getElementById(imgId);
+    const canvas = document.getElementById(canvasId);
+
+    img.onload = () => paintOverlay(img, canvas, data);
+    img.src = url;
+}
+
+function paintOverlay(img, canvas, data) {
+    canvas.width = img.clientWidth;
+    canvas.height = img.clientHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const sx = canvas.width / data.frame_w;
+    const sy = canvas.height / data.frame_h;
+
+    // scale annotation sizes with the panel so the expanded view is not
+    // covered in thumbnail-sized markers
+    const k = Math.max(1.0, canvas.width / 640);
+
+    // Matched stars: residual line, circle on detection
+    for (const st of data.stars || []) {
+        const fx = st.fx * sx, fy = st.fy * sy;
+        const ix = st.ix * sx, iy = st.iy * sy;
+
+        ctx.strokeStyle = "#b4b4b4";
+        ctx.lineWidth = 1 * k;
+        ctx.beginPath();
+        ctx.moveTo(fx, fy);
+        ctx.lineTo(ix, iy);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#00ffff";
+        ctx.lineWidth = 1.5 * k;
+        ctx.beginPath();
+        ctx.arc(fx, fy, 6 * k, 0, 2 * Math.PI);
+        ctx.stroke();
+    }
+
+    // RSOs: trajectory arrow, then circle + name on top
+    for (const s of data.rsos || []) {
+        const x = s.x * sx;
+        const y = s.y * sy;
+        const dx = (s.vx || 0) * sx * TRAJECTORY_SPAN_S;
+        const dy = (s.vy || 0) * sy * TRAJECTORY_SPAN_S;
+
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+            const tailX = x - dx, tailY = y - dy;
+            const headX = x + dx, headY = y + dy;
+
+            ctx.strokeStyle = "#00b464";
+            ctx.lineWidth = 1.5 * k;
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(headX, headY);
+            ctx.stroke();
+
+            const angle = Math.atan2(headY - tailY, headX - tailX);
+            const ah = 8 * k;
+            ctx.beginPath();
+            ctx.moveTo(headX, headY);
+            ctx.lineTo(headX - ah * Math.cos(angle - 0.4), headY - ah * Math.sin(angle - 0.4));
+            ctx.moveTo(headX, headY);
+            ctx.lineTo(headX - ah * Math.cos(angle + 0.4), headY - ah * Math.sin(angle + 0.4));
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = "#00ff88";
+        ctx.lineWidth = 2 * k;
+        ctx.beginPath();
+        ctx.arc(x, y, 12 * k, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = "#00ff88";
+        ctx.font = `${Math.round(12 * k)}px monospace`;
+        ctx.fillText(s.name, x + 16 * k, y + 4 * k);
+    }
+}
+
+// canvas size is tied to the rendered image width, so a layout change
+// invalidates every marker position
+window.addEventListener("resize", () => {
+    if (!lastOverlayData) return;
+
+    paintOverlay(
+        document.getElementById("solvedFrameImg"),
+        document.getElementById("rsoOverlay"),
+        lastOverlayData
+    );
+
+    if (selectedFeed === "solved") {
+        paintOverlay(
+            document.getElementById("expandedImg"),
+            document.getElementById("expandedOverlay"),
+            lastOverlayData
+        );
+    }
+});
 
 async function refreshSystemStatus() {
     try {
@@ -454,6 +639,7 @@ async function setFrameRateOptical() {
   alert(`FPS queued: ${fps}`);
 }
 
+selectFeed("raw");
 refreshSystemStatus();
 setInterval(refreshSystemStatus, 2000);
 </script>
