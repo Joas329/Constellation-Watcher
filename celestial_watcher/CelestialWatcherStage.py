@@ -34,5 +34,7 @@ class CelestialWatcherStage(Stage):
         self._thread.join(timeout)
         if self._thread.is_alive():
             raise RuntimeError(f"{self.name} did not exit within {timeout}s")
+
+        print("[Celestial Watcher Stage] CWS thread stop.")
         self._thread = None
 

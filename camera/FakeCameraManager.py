@@ -108,7 +108,7 @@ class FakeCameraManager:
         with self._state_lock:
             self._acquisition_thread = None
 
-        print("Fake camera stopped.")
+        print("[Camera Manager] Fake camera stopped.")
 
     def close(self):
         self.stop_acquisition()

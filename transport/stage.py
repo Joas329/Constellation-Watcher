@@ -20,6 +20,11 @@ class Stage:
         self._thread = threading.Thread(target=self._loop, name=self.name, daemon=False)
         self._thread.start()
 
+    def request_stop(self):
+        # signal-safe: set the flag without joining, so a signal handler can
+        # flag every stage instantly without blocking
+        self._stop.set()
+
     def stop(self, timeout=10.0):
         if self._thread is None:
             return
@@ -27,6 +32,7 @@ class Stage:
         self._thread.join(timeout)
         if self._thread.is_alive():
             raise RuntimeError(f"{self.name} did not exit within {timeout}s")
+        print(f"[{self.name}] {self.name} Thread Stop")
         self._thread = None
 
     def _loop(self):
@@ -34,13 +40,17 @@ class Stage:
         while not self._stop.is_set():
             item = self.source.wait(last_seq)
             if item is None:
-                continue # timeout, re-check stop
+                continue  # timeout or channel closed, re-check stop
 
             payload, capture_time, seq = item
             self.dropped += seq - last_seq - 1
             last_seq = seq
 
             result = self.process(payload, capture_time)
+
+            # re-check before publishing / looping: stop may have been requested during a slow process(), and we must not pull another frame after that
+            if self._stop.is_set():
+                break
 
             if result is not None and self.sink is not None:
                 self.sink.publish(result, capture_time)

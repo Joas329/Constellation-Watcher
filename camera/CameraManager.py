@@ -419,6 +419,7 @@ class CameraManager:
             self.camera.Close()
             print("Closed camera.")
 
+        print("[Camera Manager] Camera Manager stopped.")
         self.camera = None
         self.converter = None
         self.active_device = None

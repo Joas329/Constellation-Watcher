@@ -10,6 +10,7 @@ class Channel:
         self._payload = None
         self._capture_time = None
         self._seq = 0
+        self._closed = False
 
     def publish(self, payload, capture_time):
         if payload is None:
@@ -21,10 +22,13 @@ class Channel:
             self._cond.notify_all()
 
     def wait(self, last_seq, timeout=5.0):
-        # returns None on timeout so callers can re-check their stop event
+        # returns None on timeout, or immediately if the channel is closed, so
+        # callers (stages and stream generators) unblock at shutdown instead of sitting out a full timeout
         deadline = time.monotonic() + timeout
         with self._cond:
             while self._seq <= last_seq:
+                if self._closed:
+                    return None
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return None
@@ -38,3 +42,8 @@ class Channel:
             if self._seq == 0:
                 return None
             return self._payload, self._capture_time, self._seq
+
+    def close(self):
+        with self._cond:
+            self._closed = True
+            self._cond.notify_all()
