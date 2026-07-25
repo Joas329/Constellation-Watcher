@@ -5,10 +5,10 @@ from transport.stage import Stage
 from astropy.wcs import WCS, FITSFixedWarning
 warnings.simplefilter("ignore", FITSFixedWarning)
 
-SCALE_LOW_DEG = 15
-SCALE_HIGH_DEG = 18
+SCALE_LOW_DEG = 30
+SCALE_HIGH_DEG = 40
 ASTROMETRY_CFG = os.path.join(os.path.dirname(__file__), "astrometry.cfg")
-BLIND_SOLVE_TIMEOUT_S = 60
+BLIND_SOLVE_TIMEOUT_S = 40
 HINTED_SOLVE_TIMEOUT_S = 30
 
 class PlateSolverStage(Stage):
@@ -46,6 +46,8 @@ class PlateSolverStage(Stage):
                 "solve-field", image_path,
                 "--config", ASTROMETRY_CFG,
                 "--scale-units", "degwidth",
+                "--scale-low", str(SCALE_LOW_DEG),
+                "--scale-high", str(SCALE_HIGH_DEG),
                 "--parity", "neg",
                 "--downsample", "4",
                 "--no-plots",
