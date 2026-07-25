@@ -1,6 +1,9 @@
 import os
-import numpy as np
+import json
+import warnings
 
+import cv2
+import numpy as np
 from datetime import timedelta
 from transport.stage import Stage
 from skyfield.api import load, wgs84
@@ -9,24 +12,24 @@ VELOCITY_BASELINE_S = 1.0
 
 FRAME_W = 4096
 FRAME_H = 3000
-FRAME_RADIUS_DEG = 10.0  # half-diagonal of a ~16x12 deg field, rounded up
+FRAME_RADIUS_DEG = 22.0  # half-diagonal of the ~34x26 deg field, rounded up
 MIN_ALTITUDE_DEG = 5.0
 
 TLE_FILE = os.path.join(os.path.dirname(__file__), "tles.txt")
 EPHEMERIS_FILE = "de421.bsp"
 
-# Named observer sites for replay mode (frames from a known location + epoch).
-# Live mode ignores these and reads the position from the GPS each frame.
-ESRANGE_KIRUNA = (67.89, 21.10, 330)         # the October replay dataset was shot here
-AREQUIPA_PERU  = (-16.397107, -71.558758, 2335)
+DETECTION_SAVE_DIRECTORY = "/media/joas329/KINGSTON/"
+
+# Named observer sites for fixed-site (replay) mode. Live mode ignores these and
+# reads position from the GPS each frame.
+ESRANGE_KIRUNA = (67.89, 21.10, 330)
+AREQUIPA_PERU = (-16.397107, -71.558758, 2335)
 
 class RSOTrackerStage(Stage):
     def __init__(self, source, sink, observer=None, gps=None, gps_max_age_s=10.0):
         # exactly one location source:
-        #   observer=(lat,lon,elev)  -> fixed site, for replaying a known dataset
-        #   gps=<GPSManager>         -> live position, re-read per frame
-        # a fixed observer is resolved once; a GPS observer is resolved each frame
-        # so a moving platform (or a fix that arrives late) is always current.
+        #   observer=(lat,lon,elev) -> fixed site, for replaying a known dataset
+        #   gps=<GPSManager> -> live position, re-read per frame
         if (observer is None) == (gps is None):
             raise RuntimeError("Provide exactly one of observer=(lat,lon,elev) or gps=GPSManager.")
 
@@ -43,7 +46,10 @@ class RSOTrackerStage(Stage):
         self._gps_max_age_s = gps_max_age_s
         # fixed-site observer is built once; live-GPS observer is built per frame
         self._fixed_observer = wgs84.latlon(*observer) if observer is not None else None
-        self._last_gps_latlon = None   # cache so we don't rebuild the topos every frame if unchanged
+        self._observer_latlon = observer # fixed tuple, or None in GPS mode
+        self._last_observer_latlon = observer # last resolved (lat,lon,elev), for the sidecar
+        self._last_gps_latlon = None
+        self._gps_observer = None
 
         self._satellites = load.tle_file(TLE_FILE)
         if not self._satellites:
@@ -51,13 +57,24 @@ class RSOTrackerStage(Stage):
         mode = "fixed site" if observer is not None else "live GPS"
         print(f"RSOTracker loaded {len(self._satellites)} satellites ({mode}).")
 
+        # detection archive: raw frame + JSON sidecar, only written on a hit.
+        # resolve once here so a missing stick fails loud at startup, not per frame.
+        self._save_dir = DETECTION_SAVE_DIRECTORY
+        if self._save_dir:
+            if not os.path.isdir(self._save_dir):
+                print(f"WARNING: detection save dir {self._save_dir} not found; saving disabled.")
+                self._save_dir = None
+            else:
+                print(f"Saving detections to {self._save_dir}")
+
     def _current_observer(self):
         # fixed mode: the site never moves, return the prebuilt observer
         if self._fixed_observer is not None:
+            self._last_observer_latlon = self._observer_latlon
             return self._fixed_observer
 
-        # live mode: pull the latest GPS fix. If there's no usable fix, we can't
-        # correlate this frame — return None and let process() skip it.
+        # live mode: pull the latest GPS fix. No usable fix -> None, and
+        # process() skips correlation rather than guessing a location.
         latlon = self._gps.get_latlon_elev(max_age_s=self._gps_max_age_s)
         if latlon is None:
             return None
@@ -67,6 +84,7 @@ class RSOTrackerStage(Stage):
         if latlon != self._last_gps_latlon:
             self._last_gps_latlon = latlon
             self._gps_observer = wgs84.latlon(*latlon)
+        self._last_observer_latlon = latlon
         return self._gps_observer
 
     def process(self, payload, capture_time):
@@ -84,10 +102,59 @@ class RSOTrackerStage(Stage):
         if hits:
             names = ", ".join(f"{name} ({x:.0f},{y:.0f})" for name, _, x, y, _, _ in hits)
             print(f"RSOs in frame at {capture_time.isoformat()}: {names}")
+            self._save_detection(wcs, frame, hits, star_matches, capture_time, self._last_observer_latlon)
         else:
             print(f"No RSOs in frame at {capture_time.isoformat()}.")
 
+        # carry the frame and stars through so the overlay endpoint has
+        # everything for this capture_time in one atomic payload
         return (hits, frame, star_matches)
+
+    def _save_detection(self, wcs, frame, hits, star_matches, capture_time, observer_latlon):
+        if not self._save_dir:
+            return
+
+        # shared basename so the raw frame and its sidecar always pair up and
+        # sort chronologically; capture_time is unique per frame so no collision
+        stamp = capture_time.strftime("%Y%m%d_%H%M%S_%f")
+        base = os.path.join(self._save_dir, f"detection_{stamp}")
+        frame_path = f"{base}.png"
+        json_path = f"{base}.json"
+
+        center_ra, center_dec = float(wcs.wcs.crval[0]), float(wcs.wcs.crval[1])
+
+        # raw frame stays un-annotated: it's the analysable source of truth, and
+        # the JSON below carries everything needed to re-render the overlay later
+        record = {
+            "capture_time_utc": capture_time.isoformat(),
+            "frame_file": os.path.basename(frame_path),
+            "frame_shape": [int(frame.shape[0]), int(frame.shape[1])],
+            "observer": {
+                "lat": observer_latlon[0] if observer_latlon else None,
+                "lon": observer_latlon[1] if observer_latlon else None,
+                "alt_m": observer_latlon[2] if observer_latlon else None,
+            },
+            "wcs_center": {"ra_deg": center_ra, "dec_deg": center_dec},
+            "rsos": [
+                {"name": n, "norad": int(nid), "x": float(x), "y": float(y),
+                 "vx": float(vx), "vy": float(vy)}
+                for n, nid, x, y, vx, vy in hits
+            ],
+            "stars": [
+                {"fx": float(fx), "fy": float(fy), "ix": float(ix), "iy": float(iy)}
+                for fx, fy, ix, iy in star_matches
+            ],
+        }
+
+        try:
+            if not cv2.imwrite(frame_path, frame):
+                print(f"WARNING: failed to write detection frame to {frame_path}")
+                return
+            with open(json_path, "w") as f:
+                json.dump(record, f, indent=2)
+        except Exception as e:
+            # a yanked USB stick must not kill the tracker thread
+            print(f"WARNING: error saving detection: {e}")
 
     def _satellites_in_frame(self, wcs, capture_time_utc, observer):
         t = self._ts.from_datetime(capture_time_utc)
@@ -113,7 +180,13 @@ class RSOTrackerStage(Stage):
             if np.degrees(np.arccos(np.clip(cos_sep, -1.0, 1.0))) > FRAME_RADIUS_DEG:
                 continue
 
-            x, y = wcs.world_to_pixel_values(ra_deg, dec_deg)
+            # off-tangent-plane directions make astropy's inverse solver return
+            # NaN and warn; the isfinite check handles the result, so silence the
+            # warning only at the projection site
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                x, y = wcs.world_to_pixel_values(ra_deg, dec_deg)
+
             if not (np.isfinite(x) and np.isfinite(y)):
                 continue
             if not (0 <= x < FRAME_W and 0 <= y < FRAME_H):
@@ -124,7 +197,9 @@ class RSOTrackerStage(Stage):
 
             topo_later = (sat - observer).at(t_later)
             ra2, dec2, _ = topo_later.radec()
-            x2, y2 = wcs.world_to_pixel_values(ra2._degrees, dec2.degrees)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                x2, y2 = wcs.world_to_pixel_values(ra2._degrees, dec2.degrees)
 
             if np.isfinite(x2) and np.isfinite(y2):
                 vx = (float(x2) - float(x)) / VELOCITY_BASELINE_S
@@ -135,6 +210,3 @@ class RSOTrackerStage(Stage):
             hits.append((sat.name, sat.model.satnum, float(x), float(y), vx, vy))
 
         return hits
-
-    def _current_observer_or_none(self):
-        return self._current_observer()
