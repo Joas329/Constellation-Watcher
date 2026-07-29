@@ -9,6 +9,8 @@ correlates the solved sky position against a TLE catalog to identify
 resident space objects (RSOs), satellites, visible in the field of view,
 in real time.
 
+![Constellation Watcher demo](Constellation_Watcher_Demo.gif)
+
 The system is built as a concurrent pipes-and-filters pipeline: a camera
 producer publishes frames onto a channel, a background-subtraction and
 detection stage cleans each frame, a plate-solving stage derives a WCS
