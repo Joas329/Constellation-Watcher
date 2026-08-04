@@ -1,147 +1,255 @@
 :root {
-    --bg-main:      #080808;
-    --bg-panel:     #141010;
-    --bg-card:      #1F1717;
+    /* Olive Garden Feast base — dark, warm-earth undertone */
+    --bg-main:      #0A0B06;   /* near-black with an olive undertone */
+    --bg-deep:      #10120A;   /* faint lift */
+    --bg-panel:     #14160C;   /* panel wells */
 
-    --border:       #462424;
+    /* Two glass tints: olive green and burnt orange */
+    --glass-olive:  94, 107, 52;    /* olive */
+    --glass-ochre:  190, 109, 34;   /* burnt orange */
+    --glass-hi:     216, 200, 150;  /* warm cream top-edge highlight */
 
-    --header:       #2D1616;
+    --border:       rgba(200, 170, 110, 0.20);
+    --border-soft:  rgba(200, 170, 110, 0.10);
 
-    --text:         #F0EEEE;
+    --header:       #1A1C0E;
+
+    --text:         #F6F1DC;   /* cream */
+    --text-muted:   #B3A882;   /* faded olive-tan */
+
+    /* Accents drawn from the swatches */
+    --info:         #C79A55;   /* camel / tan */
+    --success:      #6E7C36;   /* olive */
+    --danger:       #BE6D22;   /* burnt orange */
+    --warning:      #D2A05E;   /* tan */
 }
 
+/* Warm olive/ochre glow behind everything so the frost has depth to catch */
 body {
-    background: var(--bg-main);
-    font-family: Arial, sans-serif;
+    background:
+        radial-gradient(1200px 600px at 10% -8%, rgba(94, 107, 52, 0.16), transparent 60%),
+        radial-gradient(1000px 700px at 100% 0%, rgba(190, 109, 34, 0.12), transparent 58%),
+        radial-gradient(900px 900px at 50% 120%, rgba(60, 74, 30, 0.14), transparent 60%),
+        var(--bg-main);
+    background-attachment: fixed;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     padding: 20px;
     color: var(--text);
+    min-height: 100vh;
 }
 
-img#lastFrameImg {
-    width: 100%;
-    height: auto;
-    max-height: 75vh;
-    object-fit: contain;
-
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    padding: 5px;
-}
-
-#lastFrameImg,
-#processedFrameImg {
-    display: block;
-    width: 100%;
-    height: auto;
-    max-height: none;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    padding: 5px;
-    box-sizing: border-box;
-}
-
-.btn-wide {
-    width: 90px;
-}
-
-.left-panel {
-    flex: 0 0 400px;
-
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 15px;
-    margin-right: 10px;
-}
-
-.right-panel {
-    flex: 1;
-
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 15px;
-}
+/* ---------- LIQUID GLASS CARDS ---------- */
 
 .card {
-    background: var(--bg-card);
+    position: relative;
+    /* diagonal olive → ochre tint fading into near-black */
+    background:
+        linear-gradient(
+            155deg,
+            rgba(var(--glass-olive), 0.14) 0%,
+            rgba(var(--glass-ochre), 0.10) 45%,
+            rgba(12, 13, 7, 0.68) 100%
+        );
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+
     border: 1px solid var(--border);
+    border-radius: 16px;
     color: var(--text);
+
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.55),
+        0 2px 6px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(var(--glass-hi), 0.24),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.015);
+
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
-.card-body {
-    background: var(--bg-card);
+/* specular sheen across the top */
+.card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 55%;
+    background: linear-gradient(
+        180deg,
+        rgba(255, 250, 235, 0.08) 0%,
+        rgba(255, 250, 235, 0.02) 45%,
+        transparent 100%
+    );
+    pointer-events: none;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(200, 170, 110, 0.4);
+    box-shadow:
+        0 14px 44px rgba(80, 50, 16, 0.4),
+        0 4px 10px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(var(--glass-hi), 0.34),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.card-body,
+.card-header {
+    position: relative;
+    z-index: 1;
+    background: transparent;
     color: var(--text);
 }
 
 .card-header {
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-soft);
+    background: linear-gradient(
+        180deg,
+        rgba(var(--glass-olive), 0.16),
+        rgba(var(--glass-ochre), 0.04)
+    );
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
+/* nested cards read as a deeper layer */
+.card .card {
+    backdrop-filter: blur(12px) saturate(130%);
+    -webkit-backdrop-filter: blur(12px) saturate(130%);
+    background:
+        linear-gradient(
+            155deg,
+            rgba(var(--glass-olive), 0.10) 0%,
+            rgba(12, 13, 7, 0.58) 100%
+        );
+}
+
+/* ---------- PANELS / WELLS ---------- */
+
+.left-panel,
+.right-panel {
+    background: rgba(20, 22, 12, 0.6);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 15px;
+    box-shadow: inset 0 1px 0 rgba(var(--glass-hi), 0.16);
+}
+
+.left-panel { flex: 0 0 400px; margin-right: 10px; }
+.right-panel { flex: 1; }
+
+/* ---------- IMAGES / VIEWFINDERS ---------- */
+
+#lastFrameImg,
+#processedFrameImg,
+img#lastFrameImg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    background: rgba(10, 11, 6, 0.7);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 5px;
+    box-sizing: border-box;
+}
+
+img#lastFrameImg { max-height: 75vh; object-fit: contain; }
+
+/* ---------- FORM CONTROLS ---------- */
+
 .form-control {
-    background: #1B0A0A;
+    background: rgba(10, 11, 6, 0.6);
     color: var(--text);
     border: 1px solid var(--border);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 .form-control:focus {
-    background: #1B0A0A;
+    background: rgba(16, 18, 9, 0.75);
     color: var(--text);
-    border-color: var(--danger);
-    box-shadow: none;
+    border-color: var(--warning);
+    box-shadow: 0 0 0 0.2rem rgba(210, 160, 94, 0.25);
 }
 
-.form-control::placeholder {
-    color: #8A6E6E;
+.form-control::placeholder { color: var(--text-muted); }
+
+.text-muted { color: var(--text-muted) !important; }
+
+hr { border-color: var(--border-soft); opacity: 1; }
+
+/* ---------- BUTTONS (glassy) ---------- */
+
+.btn {
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.09); }
+.btn:active { transform: translateY(0); }
+
+.btn-outline-primary {
+    color: #E4C58C;
+    border-color: rgba(199, 154, 85, 0.6);
+    background: rgba(199, 154, 85, 0.07);
+}
+.btn-outline-primary:hover {
+    background: rgba(199, 154, 85, 0.9);
+    border-color: rgba(199, 154, 85, 0.9);
+    color: #1A1C0E;
 }
 
-.text-muted {
-    color: var(--text-muted) !important;
-}
+.btn-wide { width: 90px; }
 
-hr {
-    border-color: var(--border);
-}
+/* ---------- BOOTSTRAP COLOR OVERRIDES ---------- */
 
-/* Bootstrap overrides */
+.bg-success  { background-color: var(--success) !important; }
+.bg-danger   { background-color: var(--danger)  !important; }
+.bg-primary  { background-color: var(--info)    !important; }
 
-.bg-success {
-    background-color: var(--success) !important;
-}
-
-.bg-danger {
-    background-color: var(--danger) !important;
-}
-
-.bg-primary {
-    background-color: var(--info) !important;
-}
-
+/* frosted header bars: olive → ochre blend */
 .bg-secondary {
-    background-color: #5A3A3A !important;
+    background: linear-gradient(180deg, rgba(78, 88, 40, 0.85), rgba(120, 70, 24, 0.7)) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
-
 .bg-dark {
-    background-color: #241111 !important;
+    background: linear-gradient(180deg, rgba(26, 28, 14, 0.92), rgba(12, 13, 7, 0.88)) !important;
 }
 
 .btn-primary {
     background-color: var(--info);
     border-color: var(--info);
+    color: #1A1C0E;
 }
-
 .btn-success {
     background-color: var(--success);
     border-color: var(--success);
 }
-
 .btn-danger {
     background-color: var(--danger);
     border-color: var(--danger);
 }
-
 .btn-warning {
-    background-color: var(--warning);
+    background-color: transparent;
     border-color: var(--warning);
-    color: #e3ce0f;
+    color: var(--warning);
 }
+.btn-warning:hover {
+    background-color: var(--warning);
+    color: #1A1C0E;
+}
+
+/* white viewfinder footers → frosted dark olive */
+.card-footer.bg-white {
+    background: rgba(16, 18, 9, 0.65) !important;
+    border-top: 1px solid var(--border-soft);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.badge { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
