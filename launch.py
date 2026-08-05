@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import signal
 
 from transport.channel import Channel
@@ -12,6 +13,9 @@ from celestial_watcher.PlateSolverStage import PlateSolverStage
 from celestial_watcher.CelestialTools import shutdown_processing_pool
 
 IMAGE_DIRECTORY = "/media/joas329/My Passport/celestial_data_chunk"
+SAVE_DIRECTORY = IMAGE_DIRECTORY + "/captures"
+# IMAGE_DIRECTORY = "/media/joas329/KINGSTON/exposure_test_20260725T090317_366002Z/exposure_999.996ms"
+
 USE_FAKE_CAMERA = True
 
 def main():
@@ -33,7 +37,7 @@ def main():
     gps_manager.start()
 
     # Start Celestial Channels
-    watcher = CelestialWatcherStage(raw_frames, processed_frames)
+    watcher = CelestialWatcherStage(raw_frames, processed_frames, save_dir=SAVE_DIRECTORY)
     solver = PlateSolverStage(processed_frames, solutions)
     tracker = RSOTrackerStage(solutions, detections, gps=gps_manager)
     stages = [watcher, solver, tracker]
@@ -56,7 +60,7 @@ def main():
             stage.start()
 
         # camera acquisition is started by the HTTP viewfinder route; stages block on empty channels until frames flow.
-        run_server(camera, channels=channels, gps=gps_manager)
+        run_server(camera, channels=channels, gps=gps_manager, celestial_stage=watcher)
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt received.")
