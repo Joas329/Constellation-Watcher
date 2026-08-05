@@ -5,6 +5,7 @@ import shutil
 import psutil
 import datetime
 import numpy as np
+import io, zipfile
 
 from pathlib import Path
 from waitress.server import create_server
@@ -104,6 +105,7 @@ app = Flask(__name__, static_folder=str(WEBAPP_DIR), static_url_path="/static")
 CAMERA_MANAGER = None
 GPS_MANAGER = None
 CHANNELS = {}
+CELESTIAL_STAGE = None
 _SERVER = None
 
 @app.route("/")
@@ -185,6 +187,59 @@ def handle_unexpected(e):
 
     traceback.print_exc()
     return {"ok": False, "error": f"{type(e).__name__}: {e}"}, 500
+
+MAX_SAVE_COUNT = 150
+def parse_count(payload):
+    count = payload.get("count", 1)
+    if not isinstance(count, int) or isinstance(count, bool):
+        raise ValueError(f"count must be an integer, got {count!r}")
+    if not 1 <= count <= MAX_SAVE_COUNT:
+        raise ValueError(f"count must be in [1, {MAX_SAVE_COUNT}], got {count}")
+    return count
+
+@app.route("/api/frames/save_synced", methods=["POST"])
+def save_frames_synced():
+    if CELESTIAL_STAGE is None:
+        return {"ok": False, "error": "Celestial stage not initialized"}, 500
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        count = parse_count(payload)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+
+    # no dest = the stage writes to its own configured save_dir (Celestial memory)
+    requested = CELESTIAL_STAGE.request_save(count)
+    return {"ok": True, "requested": requested}
+
+@app.route("/api/frames/request_download", methods=["POST"])
+def request_download():
+    # arms the one-shot download flag; the pipeline buffers the next frame in
+    # memory for pop_download to hand back to the viewing machine's browser
+    if CELESTIAL_STAGE is None:
+        return {"ok": False, "error": "Celestial stage not initialized"}, 500
+    CELESTIAL_STAGE.request_download()
+    return {"ok": True}
+
+@app.route("/api/frames/pop_download")
+def pop_download():
+    if CELESTIAL_STAGE is None:
+        return {"ok": False, "error": "Celestial stage not initialized"}, 500
+
+    files = CELESTIAL_STAGE.pop_download()
+    if files is None:
+        return Response(status=204) # pipeline hasn't grabbed a frame yet; client retries
+
+    # bundle raw + processed into one archive so it's a single browser download
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf: # PNGs are already compressed
+        for name, data in files:
+            zf.writestr(name, data)
+    buf.seek(0)
+
+    stamp = files[0][0].rsplit("_", 1)[0]  # frame_<stamp> from the raw filename
+    return Response(buf.getvalue(), mimetype="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{stamp}.zip"'})
 
 @app.route("/camera/opt/exposure", methods=["POST"])
 def set_exposure():
@@ -361,11 +416,12 @@ def solved_frame():
         return Response(status=204)
     return Response(encode_jpeg(prepare(np.ascontiguousarray(frame), width, stretch), quality=70), mimetype="image/jpeg", headers={"Cache-Control": "no-cache"})
 
-def run_server(camera, channels, gps, host="0.0.0.0", port=5000):
-    global CAMERA_MANAGER, CHANNELS, _SERVER, GPS_MANAGER
+def run_server(camera, channels, gps, celestial_stage, host="0.0.0.0", port=5000):
+    global CAMERA_MANAGER, CHANNELS, _SERVER, GPS_MANAGER, CELESTIAL_STAGE
     CAMERA_MANAGER = camera
     GPS_MANAGER = gps
     CHANNELS = channels
+    CELESTIAL_STAGE = celestial_stage
 
     print(f"[stream_server] JPEG encoder: {ENCODER}")
     print(f"[stream_server] Website: http://127.0.0.1:{port}")
