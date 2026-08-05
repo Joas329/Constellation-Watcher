@@ -205,6 +205,16 @@ hr { border-color: var(--border-soft); opacity: 1; }
 
 .btn-wide { width: 90px; }
 
+/* input-group addon chips (e.g. the "frames" label) */
+.input-group-text {
+    background: rgba(10, 8, 10, 0.6);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
 /* ---------- BOOTSTRAP COLOR OVERRIDES ---------- */
 
 .bg-success  { background-color: var(--success) !important; }

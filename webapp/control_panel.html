@@ -5,6 +5,7 @@
     <title>Constellation Watcher Control Panel</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <link rel="stylesheet" href="/static/style.css">
 
@@ -60,10 +61,12 @@
                 </div>
 
                 <div class="card-body">
-                    <div class="row">
+                    <!-- align-items-stretch (default) makes all three columns equal height -->
+                    <div class="row align-items-stretch">
+
                         <!-- CAMERA CONFIGURATION -->
-                        <div class="col-md-4">
-                            <div class="card shadow-sm mb-3 h-100">
+                        <div class="col-md-4 d-flex">
+                            <div class="card shadow-sm mb-3 w-100">
                                 <div class="card-header bg-secondary text-white">
                                     <strong>Camera Configuration</strong>
                                 </div>
@@ -98,8 +101,8 @@
                         </div>
 
                         <!-- HOUSEKEEPING -->
-                        <div class="col-md-4">
-                            <div class="card shadow-sm mb-3 h-100">
+                        <div class="col-md-4 d-flex">
+                            <div class="card shadow-sm mb-3 w-100">
                                 <div class="card-header bg-secondary text-white">
                                     <strong>Housekeeping Telemetry</strong>
                                 </div>
@@ -149,15 +152,43 @@
                             </div>
                         </div>
 
-                        <!-- EMERGENCY -->
-                        <div class="col-md-4">
-                            <div class="card shadow-sm mb-3 h-100">
+                        <!-- EMERGENCY + FRAME CAPTURE -->
+                        <div class="col-md-4 d-flex flex-column">
+
+                            <!-- Card 1: emergency shutdown (natural height) -->
+                            <div class="card shadow-sm mb-3">
                                 <div class="card-header bg-secondary text-white">
                                     <strong>Emergency / System Control</strong>
                                 </div>
                                 <div class="card-body">
                                     <button class="btn btn-danger w-100 mb-2">STOP ALL</button>
                                     <button class="btn btn-warning w-100">Safe Shutdown</button>
+                                </div>
+                            </div>
+
+                            <!-- Card 2: frame capture / transfer (fills the rest, buttons absorb slack) -->
+                            <div class="card shadow-sm mb-3 flex-grow-1">
+                                <div class="card-header bg-secondary text-white">
+                                    <strong>Frame Capture / Transfer</strong>
+                                </div>
+                                <div class="card-body d-flex flex-column">
+                                    <!-- how many frames to grab -->
+                                    <label for="frameCount" class="mb-1">Frames to save</label>
+                                    <div class="input-group mb-3">
+                                        <input id="frameCount" class="form-control" type="number"
+                                            min="1" step="1" value="1" placeholder="e.g. 10">
+                                        <span class="input-group-text">frames</span>
+                                    </div>
+
+                                    <button class="btn btn-outline-primary w-100 mb-2 flex-grow-1"
+                                            onclick="saveFrames('/api/frames/save_synced')">
+                                        Save one frame to Celestial device memory
+                                    </button>
+
+                                    <button class="btn btn-outline-primary w-100 flex-grow-1"
+                                            onclick="saveFramesLocal()">
+                                        Save to local device
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -669,6 +700,60 @@ async function setFrameRateOptical() {
   }
 
   alert(`FPS queued: ${fps}`);
+}
+
+async function saveFrames(endpoint) {
+    const raw = document.getElementById("frameCount").value;
+    const count = parseInt(raw, 10);
+
+    if (!Number.isInteger(count) || count < 1) {
+        alert("Frame count must be a whole number ≥ 1");
+        return;
+    }
+
+    try {
+        const res = await fetch(BASE + endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ count })
+        });
+        const text = await res.text();
+        if (!res.ok) {
+            alert(`Save failed (${res.status}): ${text}`);
+            return;
+        }
+        alert(`Queued ${count} frame${count === 1 ? "" : "s"}: ${text}`);
+    } catch (err) {
+        alert("Fetch error: " + err);
+    }
+}
+
+// download the next captured frame to the machine viewing this page. Arms the
+// same one-shot flag on the stage, then polls until the frame is buffered and
+// the browser saves it via a download.
+async function saveFramesLocal() {
+    let res = await fetch(BASE + "/api/frames/request_download", { method: "POST" });
+    if (!res.ok) { alert("Arm failed: " + res.status); return; }
+
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+        const r = await fetch(BASE + "/api/frames/pop_download");
+        if (r.status === 204) { await new Promise(s => setTimeout(s, 400)); continue; }
+        if (!r.ok) { alert("Download failed: " + r.status); return; }
+
+        const blob = await r.blob();
+        const cd = r.headers.get("Content-Disposition") || "";
+        const m = /filename="?([^"]+)"?/.exec(cd);
+        const name = m ? m[1] : "frame.zip";
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        return;
+    }
+    alert("Timed out waiting for a frame — is the viewfinder running?");
 }
 
 selectFeed("raw");
