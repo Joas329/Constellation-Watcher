@@ -30,7 +30,7 @@ def main():
     if USE_FAKE_CAMERA:
         camera = FakeCameraManager(raw_frames, IMAGE_DIRECTORY, fps=20.0, loop=True, grayscale=True)
     else:
-        camera = CameraManager(raw_frames, grayscale=True)
+        camera = CameraManager(raw_frames, grayscale=True, bit_depth=12)
 
     # Start GPS Manager
     gps_manager = GPSManager()
